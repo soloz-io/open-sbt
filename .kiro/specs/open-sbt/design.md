@@ -551,6 +551,616 @@ type TierUpdates struct {
 }
 ```
 
+### Tier Management Implementation
+
+#### Overview
+
+The open-sbt toolkit implements tier management following the SBT-AWS pattern where **tiers are attributes on tenants, not separate entities**. This flexible approach allows tiers to be defined implicitly through tenant configuration while optionally supporting centralized tier definitions for quota enforcement and feature management.
+
+**Key Design Principle:** Tier is passed as part of tenant data during registration, flows through events, and drives provisioning logic branching.
+
+#### Implementation Approaches
+
+##### Approach 1: Tier as Tenant Attribute (Recommended - Simple)
+
+The simplest approach treats tier as a string attribute on the tenant model. Provisioning logic branches based on the tier value.
+
+**Tenant Model:**
+```go
+type Tenant struct {
+    ID         string                 `json:"id"`
+    Name       string                 `json:"name"`
+    Tier       string                 `json:"tier"`      // ← Simple attribute: "basic", "standard", "premium", "enterprise"
+    Status     string                 `json:"status"`
+    OwnerEmail string                 `json:"owner_email"`
+    Config     map[string]interface{} `json:"config"`
+    CreatedAt  time.Time              `json:"created_at"`
+    UpdatedAt  time.Time              `json:"updated_at"`
+}
+```
+
+**Provisioning Logic:**
+```go
+func (p *GitOpsHelmProvisioner) ProvisionTenant(ctx context.Context, req ProvisionRequest) (*ProvisionResult, error) {
+    // Branch provisioning logic based on tier
+    var resources []ResourceSpec
+    
+    switch req.Tier {
+    case "basic":
+        resources = []ResourceSpec{
+            {Type: "namespace", Name: fmt.Sprintf("tenant-%s", req.TenantID)},
+            {Type: "resourcequota", Name: "basic-quota", Parameters: map[string]interface{}{
+                "cpu":    "1",
+                "memory": "2Gi",
+            }},
+            {Type: "database", Name: "shared-db", Parameters: map[string]interface{}{
+                "size": "small",
+                "type": "shared",
+            }},
+        }
+        
+    case "standard":
+        resources = []ResourceSpec{
+            {Type: "namespace", Name: fmt.Sprintf("tenant-%s", req.TenantID)},
+            {Type: "resourcequota", Name: "standard-quota", Parameters: map[string]interface{}{
+                "cpu":    "2",
+                "memory": "4Gi",
+            }},
+            {Type: "database", Name: "shared-db", Parameters: map[string]interface{}{
+                "size": "medium",
+                "type": "shared",
+            }},
+        }
+        
+    case "premium":
+        resources = []ResourceSpec{
+            {Type: "namespace", Name: fmt.Sprintf("tenant-%s", req.TenantID)},
+            {Type: "resourcequota", Name: "premium-quota", Parameters: map[string]interface{}{
+                "cpu":    "4",
+                "memory": "8Gi",
+            }},
+            {Type: "database", Name: fmt.Sprintf("tenant-%s-db", req.TenantID), Parameters: map[string]interface{}{
+                "size": "medium",
+                "type": "dedicated",
+            }},
+            {Type: "s3bucket", Name: fmt.Sprintf("tenant-%s-storage", req.TenantID)},
+        }
+        
+    case "enterprise":
+        resources = []ResourceSpec{
+            {Type: "namespace", Name: fmt.Sprintf("tenant-%s", req.TenantID)},
+            {Type: "resourcequota", Name: "enterprise-quota", Parameters: map[string]interface{}{
+                "cpu":    "8",
+                "memory": "16Gi",
+            }},
+            {Type: "database", Name: fmt.Sprintf("tenant-%s-db", req.TenantID), Parameters: map[string]interface{}{
+                "size": "large",
+                "type": "dedicated",
+                "replicas": 3,
+            }},
+            {Type: "s3bucket", Name: fmt.Sprintf("tenant-%s-storage", req.TenantID)},
+            {Type: "redis", Name: fmt.Sprintf("tenant-%s-cache", req.TenantID)},
+        }
+    }
+    
+    return p.provisionResources(ctx, req.TenantID, resources)
+}
+```
+
+**Event Flow:**
+```go
+// Tier flows through events
+type OnboardingRequestEvent struct {
+    TenantID string `json:"tenantId"`
+    Tier     string `json:"tier"`      // ← Tier included in event
+    Name     string `json:"name"`
+    Email    string `json:"email"`
+}
+
+// Control Plane publishes onboarding event with tier
+event := Event{
+    DetailType: "opensbt_onboardingRequest",
+    Source:     "zerosbt.control.plane",
+    Detail: OnboardingRequestEvent{
+        TenantID: tenant.ID,
+        Tier:     tenant.Tier,  // ← Tier from tenant attribute
+        Name:     tenant.Name,
+        Email:    tenant.OwnerEmail,
+    },
+}
+```
+
+##### Approach 2: Tier Configuration Table (Optional - Advanced)
+
+For centralized tier definitions with quotas, features, and pricing, implement the ITierManager interface with a database-backed tier configuration table.
+
+**Database Schema:**
+```sql
+-- Tier configuration table
+CREATE TABLE tier_configs (
+    name VARCHAR(50) PRIMARY KEY,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    quotas JSONB NOT NULL DEFAULT '{}',
+    features JSONB NOT NULL DEFAULT '[]',
+    pricing JSONB NOT NULL DEFAULT '{}',
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Example tier configurations
+INSERT INTO tier_configs (name, display_name, description, quotas, features, pricing) VALUES
+('basic', 'Basic', 'Entry-level tier for small teams', 
+ '{"users": 10, "storage_gb": 10, "api_requests": 10000, "cpu": "1", "memory": "2Gi"}',
+ '["basic_support", "email_notifications"]',
+ '{"monthly_usd": 29, "annual_usd": 290}'),
+
+('standard', 'Standard', 'Standard tier for growing teams',
+ '{"users": 50, "storage_gb": 50, "api_requests": 100000, "cpu": "2", "memory": "4Gi"}',
+ '["priority_support", "email_notifications", "api_access", "webhooks"]',
+ '{"monthly_usd": 99, "annual_usd": 990}'),
+
+('premium', 'Premium', 'Premium tier for established businesses',
+ '{"users": 100, "storage_gb": 100, "api_requests": 1000000, "cpu": "4", "memory": "8Gi"}',
+ '["priority_support", "email_notifications", "api_access", "webhooks", "sso", "custom_domain"]',
+ '{"monthly_usd": 299, "annual_usd": 2990}'),
+
+('enterprise', 'Enterprise', 'Enterprise tier with unlimited resources',
+ '{"users": -1, "storage_gb": -1, "api_requests": -1, "cpu": "8", "memory": "16Gi"}',
+ '["dedicated_support", "email_notifications", "api_access", "webhooks", "sso", "custom_domain", "sla", "audit_logs"]',
+ '{"monthly_usd": 999, "annual_usd": 9990}');
+
+-- Index for fast lookups
+CREATE INDEX idx_tier_configs_name ON tier_configs(name);
+```
+
+**ITierManager Implementation:**
+```go
+type PostgresTierManager struct {
+    db *sql.DB
+}
+
+func NewPostgresTierManager(db *sql.DB) ITierManager {
+    return &PostgresTierManager{db: db}
+}
+
+func (tm *PostgresTierManager) GetTier(ctx context.Context, tierName string) (*TierConfig, error) {
+    query := `
+        SELECT name, display_name, description, quotas, features, pricing, metadata, created_at, updated_at
+        FROM tier_configs
+        WHERE name = $1
+    `
+    
+    var tier TierConfig
+    var quotasJSON, featuresJSON, pricingJSON, metadataJSON []byte
+    
+    err := tm.db.QueryRowContext(ctx, query, tierName).Scan(
+        &tier.Name,
+        &tier.DisplayName,
+        &tier.Description,
+        &quotasJSON,
+        &featuresJSON,
+        &pricingJSON,
+        &metadataJSON,
+        &tier.CreatedAt,
+        &tier.UpdatedAt,
+    )
+    if err != nil {
+        return nil, err
+    }
+    
+    // Unmarshal JSON fields
+    json.Unmarshal(quotasJSON, &tier.Quotas)
+    json.Unmarshal(featuresJSON, &tier.Features)
+    json.Unmarshal(pricingJSON, &tier.Pricing)
+    json.Unmarshal(metadataJSON, &tier.Metadata)
+    
+    return &tier, nil
+}
+
+func (tm *PostgresTierManager) ValidateTierQuota(ctx context.Context, tierName string, usage ResourceUsage) error {
+    tier, err := tm.GetTier(ctx, tierName)
+    if err != nil {
+        return err
+    }
+    
+    // Validate user quota
+    if tier.Quotas.Users != -1 && usage.Users > tier.Quotas.Users {
+        return fmt.Errorf("user quota exceeded: %d > %d", usage.Users, tier.Quotas.Users)
+    }
+    
+    // Validate storage quota
+    if tier.Quotas.StorageGB != -1 && int(usage.StorageGB) > tier.Quotas.StorageGB {
+        return fmt.Errorf("storage quota exceeded: %.2f GB > %d GB", usage.StorageGB, tier.Quotas.StorageGB)
+    }
+    
+    // Validate API request quota
+    if tier.Quotas.APIRequests != -1 && usage.APIRequests > tier.Quotas.APIRequests {
+        return fmt.Errorf("API request quota exceeded: %d > %d", usage.APIRequests, tier.Quotas.APIRequests)
+    }
+    
+    return nil
+}
+
+func (tm *PostgresTierManager) IsTierFeatureEnabled(ctx context.Context, tierName string, feature string) (bool, error) {
+    tier, err := tm.GetTier(ctx, tierName)
+    if err != nil {
+        return false, err
+    }
+    
+    for _, f := range tier.Features {
+        if f == feature {
+            return true, nil
+        }
+    }
+    
+    return false, nil
+}
+```
+
+#### Quota Enforcement Middleware
+
+Implement middleware to enforce tier quotas at the API level:
+
+```go
+// TierQuotaMiddleware enforces tier quotas for API requests
+func TierQuotaMiddleware(tierManager ITierManager, storage IStorage) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        tenantID := c.GetString("tenant_id")
+        tenantTier := c.GetString("tenant_tier")
+        
+        // Get tier configuration
+        tierConfig, err := tierManager.GetTier(c.Request.Context(), tenantTier)
+        if err != nil {
+            c.JSON(500, gin.H{"error": "Failed to get tier configuration"})
+            c.Abort()
+            return
+        }
+        
+        // Check quota based on operation
+        switch {
+        case c.Request.Method == "POST" && c.Request.URL.Path == "/users":
+            // Check user quota
+            currentUserCount, err := storage.GetTenantUserCount(c.Request.Context(), tenantID)
+            if err != nil {
+                c.JSON(500, gin.H{"error": "Failed to check user quota"})
+                c.Abort()
+                return
+            }
+            
+            if tierConfig.Quotas.Users != -1 && currentUserCount >= tierConfig.Quotas.Users {
+                c.JSON(403, gin.H{
+                    "error": "User quota exceeded for your tier",
+                    "quota": tierConfig.Quotas.Users,
+                    "current": currentUserCount,
+                    "tier": tenantTier,
+                })
+                c.Abort()
+                return
+            }
+            
+        case c.Request.Method == "POST" && strings.HasPrefix(c.Request.URL.Path, "/files"):
+            // Check storage quota
+            currentStorage, err := storage.GetTenantStorageUsage(c.Request.Context(), tenantID)
+            if err != nil {
+                c.JSON(500, gin.H{"error": "Failed to check storage quota"})
+                c.Abort()
+                return
+            }
+            
+            if tierConfig.Quotas.StorageGB != -1 && currentStorage >= float64(tierConfig.Quotas.StorageGB) {
+                c.JSON(403, gin.H{
+                    "error": "Storage quota exceeded for your tier",
+                    "quota_gb": tierConfig.Quotas.StorageGB,
+                    "current_gb": currentStorage,
+                    "tier": tenantTier,
+                })
+                c.Abort()
+                return
+            }
+        }
+        
+        c.Next()
+    }
+}
+```
+
+#### Feature Flag Middleware
+
+Implement middleware to enforce tier-based feature access:
+
+```go
+// TierFeatureMiddleware enforces tier-based feature access
+func TierFeatureMiddleware(tierManager ITierManager, requiredFeature string) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        tenantTier := c.GetString("tenant_tier")
+        
+        // Check if feature is enabled for this tier
+        enabled, err := tierManager.IsTierFeatureEnabled(c.Request.Context(), tenantTier, requiredFeature)
+        if err != nil {
+            c.JSON(500, gin.H{"error": "Failed to check feature access"})
+            c.Abort()
+            return
+        }
+        
+        if !enabled {
+            c.JSON(403, gin.H{
+                "error": fmt.Sprintf("Feature '%s' is not available in your tier", requiredFeature),
+                "tier": tenantTier,
+                "required_feature": requiredFeature,
+            })
+            c.Abort()
+            return
+        }
+        
+        c.Next()
+    }
+}
+
+// Usage example
+r.POST("/webhooks", 
+    TierFeatureMiddleware(tierManager, "webhooks"),
+    handleCreateWebhook,
+)
+
+r.POST("/sso/configure",
+    TierFeatureMiddleware(tierManager, "sso"),
+    handleConfigureSSO,
+)
+```
+
+#### Tier Upgrade/Downgrade Workflow
+
+Implement tier change workflows with resource adjustment:
+
+```go
+// UpdateTenantTier handles tier upgrades and downgrades
+func (cp *ControlPlane) UpdateTenantTier(ctx context.Context, tenantID, newTier string) error {
+    // 1. Get current tenant
+    tenant, err := cp.storage.GetTenant(ctx, tenantID)
+    if err != nil {
+        return err
+    }
+    
+    oldTier := tenant.Tier
+    
+    // 2. Validate new tier exists
+    tierConfig, err := cp.tierManager.GetTier(ctx, newTier)
+    if err != nil {
+        return fmt.Errorf("invalid tier: %w", err)
+    }
+    
+    // 3. Check if downgrade is allowed (validate current usage against new quotas)
+    if isDowngrade(oldTier, newTier) {
+        currentUsage, err := cp.getCurrentUsage(ctx, tenantID)
+        if err != nil {
+            return err
+        }
+        
+        err = cp.tierManager.ValidateTierQuota(ctx, newTier, currentUsage)
+        if err != nil {
+            return fmt.Errorf("cannot downgrade: current usage exceeds new tier quotas: %w", err)
+        }
+    }
+    
+    // 4. Update tenant tier in database
+    err = cp.storage.UpdateTenant(ctx, tenantID, TenantUpdates{
+        Tier: &newTier,
+    })
+    if err != nil {
+        return err
+    }
+    
+    // 5. Publish tier change event for Application Plane to adjust resources
+    event := Event{
+        ID:         generateEventID(),
+        DetailType: "opensbt_tierChanged",
+        Source:     cp.eventBus.GetControlPlaneEventSource(),
+        Time:       time.Now(),
+        Detail: map[string]interface{}{
+            "tenantId": tenantID,
+            "oldTier":  oldTier,
+            "newTier":  newTier,
+            "quotas":   tierConfig.Quotas,
+            "features": tierConfig.Features,
+        },
+    }
+    
+    err = cp.eventBus.Publish(ctx, event)
+    if err != nil {
+        // Rollback tier change
+        cp.storage.UpdateTenant(ctx, tenantID, TenantUpdates{
+            Tier: &oldTier,
+        })
+        return fmt.Errorf("failed to publish tier change event: %w", err)
+    }
+    
+    return nil
+}
+
+// Application Plane handles tier change event
+func (ap *ApplicationPlane) OnTierChanged(ctx context.Context, event Event) error {
+    tenantID := event.Detail["tenantId"].(string)
+    newTier := event.Detail["newTier"].(string)
+    
+    // Update tenant resources based on new tier
+    updateReq := UpdateRequest{
+        TenantID: tenantID,
+        Tier:     newTier,
+        Resources: getTierResources(newTier),
+    }
+    
+    result, err := ap.provisioner.UpdateTenantResources(ctx, updateReq)
+    if err != nil {
+        // Publish failure event
+        return ap.publishTierChangeFailure(ctx, tenantID, err)
+    }
+    
+    // Publish success event
+    return ap.publishTierChangeSuccess(ctx, tenantID, result)
+}
+
+func isDowngrade(oldTier, newTier string) bool {
+    tierOrder := map[string]int{
+        "basic":      1,
+        "standard":   2,
+        "premium":    3,
+        "enterprise": 4,
+    }
+    
+    return tierOrder[newTier] < tierOrder[oldTier]
+}
+```
+
+#### GitOps Integration with Tier-Based Helm Values
+
+Integrate tier configuration with GitOps Helm provisioning:
+
+```yaml
+# tenants/acme-corp-123/values.yaml
+tenantId: acme-corp-123
+tier: premium
+
+# Tier-based resource allocation (from tier config)
+resources:
+  cpu: "4"
+  memory: "8Gi"
+  storage: "100Gi"
+
+# Tier-based features (from tier config)
+features:
+  sso: true
+  webhooks: true
+  customDomain: true
+  apiAccess: true
+  prioritySupport: true
+
+# Tier-based quotas (from tier config)
+quotas:
+  users: 100
+  apiRequests: 1000000
+  storageGB: 100
+
+# Database configuration based on tier
+database:
+  type: dedicated  # premium gets dedicated database
+  size: medium
+  replicas: 1
+```
+
+**Universal Tenant Helm Chart with Tier Logic:**
+```yaml
+# base-charts/tenant-factory/templates/resourcequota.yaml
+{{- if eq .Values.tier "basic" }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-{{ .Values.tenantId }}-quota
+  namespace: tenant-{{ .Values.tenantId }}
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "2"
+    limits.memory: 4Gi
+{{- else if eq .Values.tier "standard" }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-{{ .Values.tenantId }}-quota
+  namespace: tenant-{{ .Values.tenantId }}
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+{{- else if eq .Values.tier "premium" }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-{{ .Values.tenantId }}-quota
+  namespace: tenant-{{ .Values.tenantId }}
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+{{- else if eq .Values.tier "enterprise" }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-{{ .Values.tenantId }}-quota
+  namespace: tenant-{{ .Values.tenantId }}
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+{{- end }}
+```
+
+#### Testing Tier Management
+
+**Property-Based Test for Tier Quotas:**
+```go
+func TestTierQuotaEnforcement(t *testing.T) {
+    suite := setupTestSuite(t)
+    defer suite.tearDown()
+    
+    property := func(tier string, userCount int) bool {
+        if tier == "" || userCount < 0 {
+            return true // Skip invalid inputs
+        }
+        
+        ctx := context.Background()
+        
+        // Get tier configuration
+        tierConfig, err := suite.tierManager.GetTier(ctx, tier)
+        if err != nil {
+            return true // Skip if tier doesn't exist
+        }
+        
+        // Create usage that exceeds quota
+        usage := ResourceUsage{
+            Users: userCount,
+        }
+        
+        // Validate quota
+        err = suite.tierManager.ValidateTierQuota(ctx, tier, usage)
+        
+        // If quota is unlimited (-1), validation should always pass
+        if tierConfig.Quotas.Users == -1 {
+            return err == nil
+        }
+        
+        // If usage exceeds quota, validation should fail
+        if userCount > tierConfig.Quotas.Users {
+            return err != nil
+        }
+        
+        // If usage is within quota, validation should pass
+        return err == nil
+    }
+    
+    quick.Check(property, &quick.Config{MaxCount: 100})
+}
+```
+
+#### Best Practices
+
+1. **Start Simple**: Use tier as tenant attribute for initial implementation
+2. **Add Centralized Config When Needed**: Implement ITierManager when you need formal quota enforcement
+3. **Validate on Downgrade**: Always check current usage before allowing tier downgrades
+4. **Emit Events**: Publish tier change events for Application Plane to adjust resources
+5. **Use Feature Flags**: Implement tier-based feature access with middleware
+6. **Test Quota Enforcement**: Use property-based tests to validate quota logic
+7. **Document Tier Differences**: Clearly communicate tier capabilities to customers
+8. **Monitor Tier Usage**: Track resource usage per tier for pricing optimization
+
 #### ISecretManager Interface
 
 The secret manager interface provides secure secret management for GitOps workflows (Gap 8 Fix).
@@ -624,6 +1234,486 @@ type SecretFilters struct {
     Offset   int      `json:"offset,omitempty"`
 }
 ```
+
+## Multi-Tenant Microservice Libraries
+
+### Overview
+
+The open-sbt toolkit provides a comprehensive suite of Go libraries that abstract multi-tenancy concerns from application developers. Inspired by the SBT-AWS Token Vending Machine pattern, these libraries automatically handle tenant context, isolation, logging, metrics, and credential management, allowing developers to focus exclusively on business logic.
+
+**Key Design Principle:** Interface-based abstraction with default implementations (batteries included) while supporting custom observability stacks.
+
+### Architecture Pattern
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Application Microservice                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   Business   │  │   Business   │  │   Business   │          │
+│  │   Logic 1    │  │   Logic 2    │  │   Logic 3    │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│         │                  │                  │                  │
+│         └──────────────────┴──────────────────┘                  │
+│                            │                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │        Multi-Tenant Microservice Libraries              │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │   │
+│  │  │ Identity │ │ Logging  │ │ Metrics  │ │   Cost   │  │   │
+│  │  │  Token   │ │ Manager  │ │ Manager  │ │Attribution│  │   │
+│  │  │ Manager  │ │          │ │          │ │  Manager │  │   │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │   │
+│  │  │ Database │ │  Token   │ │ Tracing  │ │Monitoring│  │   │
+│  │  │Isolation │ │ Vending  │ │ Manager  │ │Integration│  │   │
+│  │  │  Helper  │ │ Machine  │ │          │ │          │  │   │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+        ┌───────────────────────────────────────┐
+        │  Automatic Multi-Tenancy Handling     │
+        │  • Tenant Context Extraction          │
+        │  • Tenant-Aware Logging               │
+        │  • Tenant-Tagged Metrics              │
+        │  • Database Isolation (RLS)           │
+        │  • Tenant-Scoped Credentials          │
+        │  • Cost Attribution                   │
+        │  • Distributed Tracing                │
+        └───────────────────────────────────────┘
+```
+
+### Library Components
+
+#### 1. Identity Token Manager
+
+**Purpose:** JWT validation and automatic tenant context extraction from authentication tokens.
+
+**Key Features:**
+- Validates JWT tokens using JWKS from authentication provider (Ory Hydra)
+- Extracts tenant_id, tenant_tier, user_id, email, and roles from JWT claims
+- Provides Gin middleware for automatic tenant context injection
+- Caches JWKS for performance optimization
+
+**Interface:**
+```go
+type IIdentityTokenManager interface {
+    ValidateAndExtract(tokenString string) (*TenantClaims, error)
+    GinMiddleware() gin.HandlerFunc
+}
+
+type TenantClaims struct {
+    TenantID   string   `json:"tenant_id"`
+    TenantTier string   `json:"tenant_tier"`
+    UserID     string   `json:"sub"`
+    Email      string   `json:"email"`
+    Roles      []string `json:"roles"`
+    jwt.RegisteredClaims
+}
+```
+
+**Usage Example:**
+```go
+// Initialize token manager
+tokenManager := tenantcontext.NewIdentityTokenManager(
+    "https://hydra.example.com/.well-known/jwks.json",
+    "https://hydra.example.com/",
+    "my-service",
+)
+
+// Apply middleware to Gin router
+r := gin.Default()
+r.Use(tokenManager.GinMiddleware())
+
+// Tenant context automatically available in handlers
+r.GET("/orders", func(c *gin.Context) {
+    tenantID := c.GetString("tenant_id")
+    tenantTier := c.GetString("tenant_tier")
+    // Business logic here
+})
+```
+
+#### 2. Logging Manager
+
+**Purpose:** Automatic tenant context injection into all log entries.
+
+**Key Features:**
+- Automatically includes tenant_id, tenant_tier, and user_id in all logs
+- Supports structured logging with JSON formatting
+- Compatible with popular logging frameworks (logrus, zap)
+- Provides context-aware logging methods
+
+**Interface:**
+```go
+type ILogger interface {
+    WithContext(ctx context.Context) ILogEntry
+    Info(ctx context.Context, msg string, fields map[string]interface{})
+    Error(ctx context.Context, msg string, err error, fields map[string]interface{})
+    Warn(ctx context.Context, msg string, fields map[string]interface{})
+    Debug(ctx context.Context, msg string, fields map[string]interface{})
+}
+```
+
+**Usage Example:**
+```go
+logger := tenantlogging.NewTenantLogger()
+
+// Automatically includes tenant_id, tenant_tier, user_id
+logger.Info(ctx, "Order created", map[string]interface{}{
+    "order_id": orderID,
+    "amount":   amount,
+})
+// Output: {"tenant_id":"tenant-123","tenant_tier":"premium","user_id":"user-456","order_id":"order-789","amount":99.99,"level":"info","msg":"Order created","time":"2026-03-17T..."}
+```
+
+#### 3. Metrics Manager
+
+**Purpose:** Automatic tenant tagging for all metrics.
+
+**Key Features:**
+- Automatically tags metrics with tenant_id and tenant_tier
+- Provides Gin middleware for request metrics
+- Supports Prometheus metrics format
+- Compatible with VictoriaMetrics backend
+
+**Interface:**
+```go
+type IMetrics interface {
+    RecordRequest(ctx context.Context, method, path string, status int, duration float64)
+    RecordError(ctx context.Context, errorType string)
+    RecordCustomMetric(ctx context.Context, name string, value float64, labels map[string]string)
+    GinMiddleware() gin.HandlerFunc
+}
+```
+
+**Usage Example:**
+```go
+metrics := tenantmetrics.NewTenantMetrics("my_service")
+
+// Apply middleware for automatic request metrics
+r.Use(metrics.GinMiddleware())
+
+// Record custom metrics with automatic tenant tagging
+metrics.RecordCustomMetric(ctx, "orders_processed", 1, map[string]interface{}{
+    "order_type": "subscription",
+})
+```
+
+#### 4. Token Vending Machine
+
+**Purpose:** Provide tenant-scoped credentials for accessing Kubernetes resources.
+
+**Key Features:**
+- Retrieves tenant-specific credentials from Kubernetes secrets
+- Provides tenant-scoped S3, database, and API credentials
+- Implements credential caching with expiration
+- Enforces tenant isolation at credential level
+
+**Interface:**
+```go
+type ITokenVendingMachine interface {
+    GetTenantCredentials(ctx context.Context, jwtToken, resourceType string) (*Credentials, error)
+    RefreshCredentials(ctx context.Context, tenantID, resourceType string) (*Credentials, error)
+}
+
+type Credentials struct {
+    AccessKey    string `json:"access_key"`
+    SecretKey    string `json:"secret_key"`
+    SessionToken string `json:"session_token,omitempty"`
+    Endpoint     string `json:"endpoint"`
+    ExpiresAt    int64  `json:"expires_at"`
+}
+```
+
+**Usage Example:**
+```go
+tvm := tokenvendingmachine.NewTokenVendingMachine(k8sClient, tokenManager, credStore)
+
+// Get tenant-scoped S3 credentials
+creds, err := tvm.GetTenantCredentials(ctx, jwtToken, "s3")
+
+// Use credentials to access tenant's S3 bucket
+s3Client := s3.New(s3.Config{
+    AccessKey: creds.AccessKey,
+    SecretKey: creds.SecretKey,
+    Endpoint:  creds.Endpoint,
+})
+```
+
+#### 5. Database Isolation Helper
+
+**Purpose:** Automatic PostgreSQL RLS context setting for tenant isolation.
+
+**Key Features:**
+- Automatically sets app.tenant_id session variable
+- Wraps database connections for transparent RLS enforcement
+- Compatible with sqlc generated queries
+- Provides transaction support with tenant context
+
+**Interface:**
+```go
+type ITenantDB interface {
+    BeginTx(ctx context.Context) (*sql.Tx, error)
+    QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+    ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+```
+
+**Usage Example:**
+```go
+tenantDB := tenantdb.NewTenantDB(db)
+
+// Automatically sets tenant context for RLS
+rows, err := tenantDB.QueryContext(ctx, "SELECT * FROM orders")
+// → Executes: SET app.tenant_id = 'tenant-123'; SELECT * FROM orders;
+
+// Works seamlessly with sqlc
+queries := New(tenantDB)
+orders, err := queries.ListOrders(ctx) // Only returns tenant's orders
+```
+
+#### 6. Cost Attribution Manager
+
+**Purpose:** Track tenant resource usage for billing and cost optimization.
+
+**Key Features:**
+- Records CPU, memory, storage, and API request usage per tenant
+- Provides Prometheus metrics for cost attribution
+- Calculates per-request costs based on tenant tier
+- Integrates with billing systems
+
+**Interface:**
+```go
+type ICostTracker interface {
+    RecordResourceUsage(ctx context.Context, resourceType string, usage float64, unit string)
+    RecordCost(ctx context.Context, costType string, amount float64, currency string)
+    RecordRequestCost(ctx context.Context, service, operation string, cost float64)
+    GinMiddleware() gin.HandlerFunc
+}
+```
+
+**Usage Example:**
+```go
+costManager := tenantcost.NewCostAttributionManager("my_service")
+
+// Apply middleware for automatic request cost tracking
+r.Use(costManager.GinMiddleware())
+
+// Record resource usage
+costManager.RecordResourceUsage(ctx, "cpu", 0.5, "cores")
+costManager.RecordResourceUsage(ctx, "memory", 1024, "MB")
+costManager.RecordCost(ctx, "compute", 0.05, "USD")
+```
+
+#### 7. Infrastructure Monitoring Integration
+
+**Purpose:** Built-in integration with cloud-native monitoring tools.
+
+**Key Features:**
+- Integrates with VictoriaMetrics, OpenSearch, Grafana Alloy, K8sGPT
+- Sends tenant-tagged metrics to VictoriaMetrics
+- Sends tenant-isolated logs to OpenSearch
+- Provides K8sGPT diagnostics for tenant namespaces
+
+**Interface:**
+```go
+type IMonitoringIntegration interface {
+    SendMetrics(ctx context.Context, metrics []TenantMetric) error
+    SendLogs(ctx context.Context, logs []TenantLog) error
+    RunDiagnostics(ctx context.Context, namespace string) (*DiagnosticReport, error)
+}
+```
+
+**Usage Example:**
+```go
+monitoring := tenantmonitoring.NewMonitoringIntegration(config)
+
+// Send metrics with automatic tenant labels
+monitoring.SendMetrics(ctx, []TenantMetric{
+    {Name: "api_requests", Value: 100, Labels: map[string]string{"endpoint": "/orders"}},
+})
+
+// Send logs with tenant isolation
+monitoring.SendLogs(ctx, []TenantLog{
+    {Level: "info", Message: "Order processed", Fields: map[string]interface{}{"order_id": "123"}},
+})
+```
+
+#### 8. Distributed Tracing Manager
+
+**Purpose:** Tenant-aware distributed tracing with OpenTelemetry.
+
+**Key Features:**
+- Uses OpenTelemetry for distributed tracing
+- Automatically tags spans with tenant_id, tenant_tier, user_id
+- Provides Gin middleware for automatic trace propagation
+- Supports Jaeger, Zipkin, and other OpenTelemetry backends
+
+**Interface:**
+```go
+type ITracer interface {
+    StartSpan(ctx context.Context, operationName string) (context.Context, trace.Span)
+    GinMiddleware() gin.HandlerFunc
+}
+```
+
+**Usage Example:**
+```go
+tracer := tenanttracing.NewTenantTracer("my-service")
+
+// Apply middleware for automatic tracing
+r.Use(tracer.GinMiddleware())
+
+// Start traced operations
+ctx, span := tracer.StartSpan(ctx, "process_order")
+defer span.End()
+
+// Span automatically includes tenant_id, tenant_tier, user_id attributes
+```
+
+### Implementation Strategy
+
+#### Default Implementations (Batteries Included)
+
+The toolkit provides production-ready default implementations:
+
+- **Logging**: Logrus with JSON formatting and tenant context injection
+- **Metrics**: Prometheus with VictoriaMetrics backend
+- **Tracing**: OpenTelemetry with Jaeger exporter
+- **Cost Tracking**: Built-in cost attribution with Prometheus metrics
+- **Monitoring**: VictoriaMetrics, OpenSearch, K8sGPT integration
+
+#### Custom Implementations (Pluggable)
+
+Users can provide custom implementations for specific needs:
+
+```go
+// Option 1: Use all defaults (rapid development)
+observability := defaultobservability.New()
+
+// Option 2: Use all custom (enterprise requirements)
+observability := &CustomObservability{
+    logger:  datadoglogging.New(datadogConfig),
+    metrics: newrelicmetrics.New(newrelicConfig),
+    tracer:  jaegertracing.New(jaegerConfig),
+    cost:    customcost.New(billingConfig),
+}
+
+// Option 3: Mix and match (common scenario)
+observability := &MixedObservability{
+    logger:  defaultlogging.New(),           // Use default
+    metrics: datadogmetrics.New(config),     // Use Datadog
+    tracer:  defaulttracing.New(),           // Use default
+    cost:    enterprisecost.New(config),     // Use enterprise
+}
+```
+
+### Complete Microservice Example
+
+**Putting it all together:**
+
+```go
+package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenantcontext"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenantlogging"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenantmetrics"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenantdb"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenantcost"
+    "github.com/zero-ops/open-sbt/pkg/libraries/tenanttracing"
+)
+
+func main() {
+    // Initialize libraries
+    tokenManager, _ := tenantcontext.NewIdentityTokenManager(
+        "https://hydra.example.com/.well-known/jwks.json",
+        "https://hydra.example.com/",
+        "my-service",
+    )
+    
+    logger := tenantlogging.NewTenantLogger()
+    metrics := tenantmetrics.NewTenantMetrics("my_service")
+    costManager := tenantcost.NewCostAttributionManager("my_service")
+    tracer := tenanttracing.NewTenantTracer("my-service")
+    tenantDB := tenantdb.NewTenantDB(db)
+    
+    // Setup Gin
+    r := gin.Default()
+    
+    // Apply tenant middleware (order matters!)
+    r.Use(tokenManager.GinMiddleware())  // 1. Extract tenant context
+    r.Use(tracer.GinMiddleware())        // 2. Start distributed tracing
+    r.Use(metrics.GinMiddleware())       // 3. Record metrics
+    r.Use(costManager.GinMiddleware())   // 4. Track costs
+    
+    // Define routes
+    r.GET("/users", func(c *gin.Context) {
+        ctx := c.Request.Context()
+        
+        // Start a traced operation
+        ctx, span := tracer.StartSpan(ctx, "list_users")
+        defer span.End()
+        
+        // Logging automatically includes tenant context
+        logger.Info(ctx, "Listing users", nil)
+        
+        // Database queries automatically filtered by tenant
+        rows, err := tenantDB.QueryContext(ctx, "SELECT * FROM users")
+        if err != nil {
+            logger.Error(ctx, "Failed to list users", err, nil)
+            c.JSON(500, gin.H{"error": "Internal server error"})
+            return
+        }
+        defer rows.Close()
+        
+        // Record resource usage for cost attribution
+        costManager.RecordResourceUsage(ctx, "database_queries", 1, "count")
+        
+        // Process rows...
+        c.JSON(200, gin.H{"users": users})
+    })
+    
+    r.Run(":8080")
+}
+```
+
+**What the developer gets automatically:**
+1. ✅ JWT validation and tenant context extraction
+2. ✅ Tenant-aware logging (all logs tagged with tenant_id)
+3. ✅ Tenant-aware metrics (all metrics tagged with tenant_id)
+4. ✅ Database isolation via RLS (queries automatically filtered)
+5. ✅ Tenant-scoped credentials (via Token Vending Machine)
+6. ✅ Cost attribution and resource tracking
+7. ✅ Distributed tracing with tenant context
+8. ✅ Infrastructure monitoring integration
+
+**What the developer writes:**
+- Just business logic!
+
+### Benefits
+
+1. **Developer Productivity**: Multi-tenancy concerns handled automatically
+2. **Consistency**: Standardized patterns across all microservices
+3. **Security**: Tenant isolation enforced at multiple layers
+4. **Observability**: Comprehensive tenant-aware monitoring out-of-the-box
+5. **Flexibility**: Interface-based design allows custom implementations
+6. **Cost Attribution**: Built-in usage tracking for billing integration
+
+### Comparison with SBT-AWS
+
+| Aspect | SBT-AWS | open-sbt |
+|--------|---------|----------|
+| **Logging** | Basic Log4j2 with manual tenant context | Automatic tenant context injection |
+| **Metrics** | None (external tools required) | Built-in Prometheus metrics with tenant tags |
+| **Tracing** | None | OpenTelemetry with tenant context |
+| **Cost Attribution** | Optional KubeCost (manual setup) | Built-in cost tracking and attribution |
+| **Monitoring Integration** | External tools only | VictoriaMetrics, OpenSearch, K8sGPT |
+| **Alerting** | None | Built-in SLA/SLO monitoring |
+| **Developer Experience** | Manual observability setup | Automatic multi-tenant observability |
+| **Production Readiness** | Basic (requires external stack) | Comprehensive (batteries included) |
+| **Customization** | N/A | Interface-based with pluggable implementations |
 
 ## Data Models
 

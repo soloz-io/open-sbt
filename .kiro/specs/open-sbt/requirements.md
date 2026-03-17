@@ -114,18 +114,38 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 
 ### Requirement 7: Tier-Based Resource Management
 
-**User Story:** As a product manager, I want different resource allocations for different customer tiers, so that I can offer tiered pricing and service levels.
+**User Story:** As a product manager, I want different resource allocations for different customer tiers, so that I can offer tiered pricing and service levels with proper quota enforcement and feature management.
 
 #### Acceptance Criteria
 
 1. THE Provisioner SHALL allocate resources based on tenant tier configuration
-2. WHEN a starter tier tenant is created, THE Provisioner SHALL apply basic resource limits
-3. WHEN an enterprise tier tenant is created, THE Provisioner SHALL apply premium resource allocations
-4. THE Tier_Configuration SHALL be customizable through provider implementations
-5. WHEN tier upgrades occur, THE Provisioner SHALL adjust resources without downtime
-6. THE ITierManager SHALL provide formal tier definitions with quotas, features, and pricing configuration
-7. THE ITierManager SHALL validate tenant resource usage against tier quotas before provisioning
-8. THE ITierManager SHALL support tier feature management and quota enforcement
+2. WHEN a basic tier tenant is created, THE Provisioner SHALL apply basic resource limits (1 CPU, 2Gi memory, shared database)
+3. WHEN a standard tier tenant is created, THE Provisioner SHALL apply standard resource limits (2 CPU, 4Gi memory, shared database)
+4. WHEN a premium tier tenant is created, THE Provisioner SHALL apply premium resource limits (4 CPU, 8Gi memory, dedicated database, S3 bucket)
+5. WHEN an enterprise tier tenant is created, THE Provisioner SHALL apply enterprise resource allocations (8 CPU, 16Gi memory, dedicated database with replicas, S3 bucket, Redis cache)
+6. THE Tier_Configuration SHALL be customizable through provider implementations
+7. WHEN tier upgrades occur, THE Provisioner SHALL adjust resources without downtime
+8. THE ITierManager SHALL provide formal tier definitions with quotas, features, and pricing configuration
+9. THE ITierManager SHALL validate tenant resource usage against tier quotas before provisioning
+10. THE ITierManager SHALL support tier feature management and quota enforcement
+11. THE Toolkit SHALL support two tier management approaches: simple tier-as-attribute and advanced tier-configuration-table
+12. THE Tier-as-attribute approach SHALL treat tier as a string field on the tenant model for simple implementations
+13. THE Tier-configuration-table approach SHALL provide centralized tier definitions with database storage for advanced quota and feature management
+14. THE ITierManager SHALL provide quota validation methods that prevent resource allocation exceeding tier limits
+15. THE ITierManager SHALL provide feature flag methods to check if specific features are enabled for a tier
+16. THE Toolkit SHALL provide TierQuotaMiddleware for API-level quota enforcement (users, storage, API requests)
+17. THE Toolkit SHALL provide TierFeatureMiddleware for API-level feature access control (SSO, webhooks, custom domains)
+18. WHEN tier downgrades are requested, THE ITierManager SHALL validate that current usage does not exceed new tier quotas
+19. WHEN tier changes occur, THE Control_Plane SHALL publish opensbt_tierChanged events for Application_Plane resource adjustment
+20. THE Application_Plane SHALL handle tier change events by updating tenant resources via the Provisioner
+21. THE Tier configuration SHALL flow through onboarding events to drive provisioning logic branching
+22. THE GitOps Helm charts SHALL use tier values to generate appropriate Kubernetes ResourceQuotas and resource specifications
+23. THE Tier management SHALL support unlimited quotas using -1 values for enterprise tiers
+24. THE Tier configuration SHALL include features array for tier-based feature enablement (basic_support, sso, webhooks, custom_domain, etc.)
+25. THE Tier configuration SHALL include pricing information for billing system integration
+26. THE ITierManager SHALL provide methods for CRUD operations on tier configurations (CreateTier, GetTier, UpdateTier, DeleteTier, ListTiers)
+27. THE Tier validation SHALL prevent tier changes that would violate current resource usage constraints
+28. THE Tier management SHALL support rollback of tier changes if resource adjustment fails
 
 ### Requirement 8: Comprehensive Testing Framework
 
@@ -235,3 +255,38 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 8. THE Event_Bus SHALL support Event-Driven State Machine events: GitCommitted, ArgoSyncStarted, ArgoSyncCompleted, ArgoHealthChanged
 9. THE Storage_Interface SHALL provide UpdateTenantArgoStatus and TouchTenantObservation methods for webhook-driven state updates
 10. THE State machine SHALL support failed and failed_cleanup states for definitive provisioning failures with manual retry capabilities
+
+### Requirement 16: Multi-Tenant Microservice Libraries
+
+**User Story:** As a microservice developer, I want reusable libraries that automatically handle multi-tenancy concerns, so that I can focus on business logic without implementing tenant isolation, logging, metrics, and credential management repeatedly.
+
+#### Acceptance Criteria
+
+1. THE Toolkit SHALL provide an Identity Token Manager library for JWT validation and tenant context extraction
+2. THE Identity Token Manager SHALL validate JWT tokens using JWKS from the authentication provider
+3. THE Identity Token Manager SHALL extract tenant_id, tenant_tier, user_id, and roles from JWT claims
+4. THE Identity Token Manager SHALL provide Gin middleware for automatic tenant context injection into request contexts
+5. THE Toolkit SHALL provide a Logging Manager library that automatically injects tenant context into all log entries
+6. THE Logging Manager SHALL include tenant_id, tenant_tier, and user_id in all log entries without manual intervention
+7. THE Logging Manager SHALL support structured logging with JSON formatting for log aggregation systems
+8. THE Toolkit SHALL provide a Metrics Manager library that automatically tags metrics with tenant information
+9. THE Metrics Manager SHALL tag all metrics with tenant_id and tenant_tier labels for per-tenant observability
+10. THE Metrics Manager SHALL provide Gin middleware for automatic request metrics collection
+11. THE Toolkit SHALL provide a Token Vending Machine library for tenant-scoped credential management
+12. THE Token Vending Machine SHALL provide tenant-scoped credentials for accessing Kubernetes resources
+13. THE Token Vending Machine SHALL integrate with Kubernetes secrets to retrieve tenant-specific credentials
+14. THE Toolkit SHALL provide a Database Isolation Helper library for automatic PostgreSQL RLS context setting
+15. THE Database Isolation Helper SHALL automatically set the app.tenant_id session variable before executing queries
+16. THE Database Isolation Helper SHALL wrap database connections to enforce tenant isolation at the database layer
+17. THE Toolkit SHALL provide a Cost Attribution Manager library for tracking tenant resource usage
+18. THE Cost Attribution Manager SHALL record CPU, memory, storage, and API request usage per tenant
+19. THE Cost Attribution Manager SHALL provide Prometheus metrics for cost attribution and billing integration
+20. THE Toolkit SHALL provide an Infrastructure Monitoring Integration library for observability stack integration
+21. THE Infrastructure Monitoring Integration SHALL support VictoriaMetrics, OpenSearch, Grafana Alloy, and K8sGPT
+22. THE Toolkit SHALL provide a Distributed Tracing Manager library for tenant-aware distributed tracing
+23. THE Distributed Tracing Manager SHALL use OpenTelemetry with automatic tenant context propagation
+24. THE Distributed Tracing Manager SHALL tag all spans with tenant_id, tenant_tier, and user_id attributes
+25. THE Libraries SHALL follow an interface-based abstraction pattern allowing custom implementations
+26. THE Libraries SHALL provide both default implementations (batteries included) and support for custom observability stacks
+27. THE Libraries SHALL allow mixing default and custom implementations (e.g., default logging with custom metrics)
+28. WHEN developers use these libraries, THEN multi-tenancy concerns SHALL be handled automatically without manual code
