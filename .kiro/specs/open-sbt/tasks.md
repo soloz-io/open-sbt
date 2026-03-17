@@ -40,54 +40,54 @@
 ### 4. PostgreSQL Storage Provider
 **Note:** This is production code that will be used by both production services and E2E tests. No separate test implementations.
 
-- [ ] 4.1 Setup PostgreSQL schema with RLS policies (production schema used by all environments)
-- [ ] 4.2 Configure sqlc for type-safe query generation (production queries used by all code paths)
-- [ ] 4.3 Implement CreateTenant with tenant isolation (production method used by Control Plane and tests)
-- [ ] 4.4 Implement GetTenant with RLS enforcement (production method used by Control Plane and tests)
-- [ ] 4.5 Implement UpdateTenant with validation (production method used by Control Plane and tests)
-- [ ] 4.6 Implement DeleteTenant with cascade handling (production method used by Control Plane and tests)
-- [ ] 4.7 Implement ListTenants with filtering (production method used by Control Plane and tests)
-- [ ] 4.8 Implement tenant registration CRUD operations (production methods used by Control Plane and tests)
-- [ ] 4.9 Implement tenant configuration storage (production methods used by Control Plane and tests)
-- [ ] 4.10 Implement event idempotency (Inbox Pattern) (production methods used by Application Plane and tests)
-- [ ] 4.11 Implement UpdateTenantArgoStatus for webhook-driven state management (production method used by webhooks and tests)
-- [ ] 4.12 Implement TouchTenantObservation for LastObservedAt updates (production method used by webhooks and tests)
-- [ ] 4.13 Implement ListStuckTenants for active reconciliation (production method used by reconciler and tests)
-- [ ] 4.14 Implement ListUnobservedTenants for orphaned infrastructure detection (production method used by reconciler and tests)
-- [ ] 4.15 Implement transaction support with proper isolation (production transaction handling used by all code paths)
-- [ ] 4.16 Create database migration scripts (production migrations used by all environments)
-- [ ] 4.17 Add connection pooling with PgBouncer configuration (production pooling used by all environments)
-- [ ] 4.18 Implement composite indexes on (tenant_id, ...) for performance (production indexes used by all environments)
+- [x] 4.1 Setup PostgreSQL schema with RLS policies (production schema used by all environments)
+- [x] 4.2 Configure sqlc for type-safe query generation (production queries used by all code paths)
+- [x] 4.3 Implement CreateTenant with tenant isolation (production method used by Control Plane and tests)
+- [x] 4.4 Implement GetTenant with RLS enforcement (production method used by Control Plane and tests)
+- [x] 4.5 Implement UpdateTenant with validation (production method used by Control Plane and tests)
+- [x] 4.6 Implement DeleteTenant with cascade handling (production method used by Control Plane and tests)
+- [x] 4.7 Implement ListTenants with filtering (production method used by Control Plane and tests)
+- [x] 4.8 Implement tenant registration CRUD operations (production methods used by Control Plane and tests)
+- [x] 4.9 Implement tenant configuration storage (production methods used by Control Plane and tests)
+- [x] 4.10 Implement event idempotency (Inbox Pattern) (production methods used by Application Plane and tests)
+- [x] 4.11 Implement UpdateTenantArgoStatus for webhook-driven state management (production method used by webhooks and tests)
+- [x] 4.12 Implement TouchTenantObservation for LastObservedAt updates (production method used by webhooks and tests)
+- [x] 4.13 Implement ListStuckTenants for active reconciliation (production method used by reconciler and tests)
+- [x] 4.14 Implement ListUnobservedTenants for orphaned infrastructure detection (production method used by reconciler and tests)
+- [x] 4.15 Implement transaction support with proper isolation (production transaction handling used by all code paths)
+- [x] 4.16 Create database migration scripts (production migrations used by all environments)
+- [x] 4.17 Add connection pooling with PgBouncer configuration (production pooling used by all environments)
+- [x] 4.18 Implement composite indexes on (tenant_id, ...) for performance (production indexes used by all environments)
 
 ### 5. PostgREST Dashboard Provider
-- [ ] 5.1 Configure PostgREST for auto-generated REST API
-- [ ] 5.2 Setup JWT authentication for PostgREST endpoints
-- [ ] 5.3 Configure RLS policies for PostgREST access
-- [ ] 5.4 Create read-only views for dashboard queries
-- [ ] 5.5 Implement rate limiting for PostgREST endpoints
-- [ ] 5.6 Add API documentation for PostgREST endpoints
+- [x] 5.1 Configure PostgREST for auto-generated REST API
+- [x] 5.2 Setup JWT authentication for PostgREST endpoints
+- [x] 5.3 Configure RLS policies for PostgREST access
+- [x] 5.4 Create read-only views for dashboard queries
+- [x] 5.5 Implement rate limiting for PostgREST endpoints
+- [x] 5.6 Add API documentation for PostgREST endpoints
 
 ## Phase 3: Authentication and Authorization (Weeks 6-7)
 
 ### 6. Ory Stack Authentication Provider
 **Note:** This is production code that will be used by both production services and E2E tests. No separate test implementations.
 
-- [ ] 6.1 Implement Ory Kratos integration for identity management (production integration used by Control Plane and tests)
-- [ ] 6.2 Implement Ory Hydra integration for OAuth2/OIDC (production integration used by Control Plane and tests)
-- [ ] 6.3 Implement Ory Keto integration for relationship-based authorization (production integration used by Control Plane and tests)
-- [ ] 6.4 Implement CreateUser with tenant context (production method used by Control Plane and tests)
-- [ ] 6.5 Implement GetUser with tenant isolation (production method used by Control Plane and tests)
-- [ ] 6.6 Implement UpdateUser with validation (production method used by Control Plane and tests)
-- [ ] 6.7 Implement DeleteUser with cleanup (production method used by Control Plane and tests)
-- [ ] 6.8 Implement DisableUser and EnableUser (production methods used by Control Plane and tests)
-- [ ] 6.9 Implement ListUsers with tenant filtering (production method used by Control Plane and tests)
-- [ ] 6.10 Implement AuthenticateUser with JWT generation (production method used by Control Plane and tests)
-- [ ] 6.11 Implement ValidateToken with JWKS validation (production method used by middleware and tests)
-- [ ] 6.12 Implement RefreshToken with rotation (production method used by Control Plane and tests)
-- [ ] 6.13 Implement CreateAdminUser for platform administrators (production method used by Control Plane and tests)
-- [ ] 6.14 Configure JWT claims with tenant_id, tenant_tier, user_id, roles (production JWT structure used by all code paths)
-- [ ] 6.15 Implement token configuration methods (GetJWTIssuer, GetJWTAudience, etc.) (production methods used by middleware and tests)
-- [ ] 6.16 Add tenant-user relationship management in Ory Keto (production relationship logic used by all code paths)
+- [x] 6.1 Implement Ory Kratos integration for identity management (production integration used by Control Plane and tests)
+- [x] 6.2 Implement Ory Hydra integration for OAuth2/OIDC (production integration used by Control Plane and tests)
+- [x] 6.3 Implement Ory Keto integration for relationship-based authorization (production integration used by Control Plane and tests)
+- [x] 6.4 Implement CreateUser with tenant context (production method used by Control Plane and tests)
+- [x] 6.5 Implement GetUser with tenant isolation (production method used by Control Plane and tests)
+- [x] 6.6 Implement UpdateUser with validation (production method used by Control Plane and tests)
+- [x] 6.7 Implement DeleteUser with cleanup (production method used by Control Plane and tests)
+- [x] 6.8 Implement DisableUser and EnableUser (production methods used by Control Plane and tests)
+- [x] 6.9 Implement ListUsers with tenant filtering (production method used by Control Plane and tests)
+- [x] 6.10 Implement AuthenticateUser with JWT generation (production method used by Control Plane and tests)
+- [x] 6.11 Implement ValidateToken with JWKS validation (production method used by middleware and tests)
+- [x] 6.12 Implement RefreshToken with rotation (production method used by Control Plane and tests)
+- [x] 6.13 Implement CreateAdminUser for platform administrators (production method used by Control Plane and tests)
+- [x] 6.14 Configure JWT claims with tenant_id, tenant_tier, user_id, roles (production JWT structure used by all code paths)
+- [x] 6.15 Implement token configuration methods (GetJWTIssuer, GetJWTAudience, etc.) (production methods used by middleware and tests)
+- [x] 6.16 Add tenant-user relationship management in Ory Keto (production relationship logic used by all code paths)
 
 ## Phase 4: Event Bus (Weeks 8-9)
 
