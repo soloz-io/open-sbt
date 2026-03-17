@@ -195,6 +195,16 @@ func (cp *ControlPlane) corsMiddleware() gin.HandlerFunc {
 // The flag is toggled via ISystemAdmin.EnableMaintenanceMode (Task 8 scope:
 // the middleware slot is wired here; the toggle lives in the system admin handler).
 var maintenanceActive bool
+var maintenanceReason string
+
+// SetMaintenanceMode toggles platform maintenance mode (used by ISystemAdmin).
+func SetMaintenanceMode(active bool, reason string) {
+	maintenanceActive = active
+	maintenanceReason = reason
+}
+
+// IsMaintenanceMode reports whether maintenance mode is currently active.
+func IsMaintenanceMode() bool { return maintenanceActive }
 
 func maintenanceMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
