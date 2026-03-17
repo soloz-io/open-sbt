@@ -1,7 +1,7 @@
 ---
 title: SaaS Architecture Principles
 description: Multi-tenant SaaS design principles adapted from AWS Well-Architected SaaS Lens
-inclusion: auto
+inclusion: always
 ---
 
 # SaaS Architecture Principles

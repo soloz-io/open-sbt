@@ -1,7 +1,7 @@
 ---
 title: MCP-First Development
 description: Prioritize MCP server discovery and usage before writing code
-inclusion: auto
+inclusion: always
 ---
 
 # MCP-First Development
