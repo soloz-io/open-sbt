@@ -59,7 +59,7 @@ inclusion: always
 
 ## AI & Agent Runtime
 - **LiteLLM**: AI model gateway and routing
-- **gVisor (runsc)**: Sandboxed agent execution environment
+- **AgentSandbox (runsc)**: Sandboxed agent execution environment
 - **MCP (Model Context Protocol)**: Agent-to-platform communication
 - **PostgREST**: Auto-generated REST APIs from PostgreSQL schema
 
