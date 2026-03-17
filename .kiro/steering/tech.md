@@ -33,7 +33,7 @@ inclusion: always
 - **pgvector**: Vector similarity search for AI features
 - **PgBouncer**: Connection pooling (via CNPG spec.pooler)
 - **Hetzner S3**: Object storage
-- **KSOPS + Age**: Secret encryption in Git
+- **HashiCorp Vault**: Secret management
 
 ## Authentication & Security
 - **Ory Kratos**: Identity management
