@@ -1,4 +1,4 @@
-# Zero-SBT Design Principles
+# open-sbt Design Principles
 
 **Version:** 1.0  
 **Date:** 2026-03-16  
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-Zero-SBT is a Go-based SaaS builder toolkit for the zero-ops platform, inspired by AWS SBT-AWS. It provides reusable abstractions for building multi-tenant SaaS applications with a clear separation between Control Plane and Application Plane.
+open-sbt is a Go-based SaaS builder toolkit for the zero-ops platform, inspired by AWS SBT-AWS. It provides reusable abstractions for building multi-tenant SaaS applications with a clear separation between Control Plane and Application Plane.
 
 **Key Differences from SBT-AWS:**
 - Language: Go (not TypeScript/CDK)
@@ -819,7 +819,7 @@ func TestTenantIsolation(t *testing.T) {
 ## Package Structure
 
 ```
-zero-sbt/
+open-sbt/
 ├── pkg/
 │   ├── interfaces/           # Core interfaces (IAuth, IEventBus, etc.)
 │   │   ├── auth.go
@@ -871,7 +871,7 @@ zero-sbt/
 │   └── with-metering/       # With metering integration
 │
 ├── docs/                     # Documentation
-│   ├── zero-sbt-design-principles.md
+│   ├── open-sbt-design-principles.md
 │   ├── getting-started.md
 │   └── api-reference.md
 │
@@ -892,10 +892,10 @@ import (
     "context"
     "log"
     
-    zerosbt "github.com/zero-ops/zero-sbt/pkg"
-    "github.com/zero-ops/zero-sbt/pkg/providers/ory"
-    "github.com/zero-ops/zero-sbt/pkg/providers/nats"
-    "github.com/zero-ops/zero-sbt/pkg/providers/postgres"
+    zerosbt "github.com/zero-ops/open-sbt/pkg"
+    "github.com/zero-ops/open-sbt/pkg/providers/ory"
+    "github.com/zero-ops/open-sbt/pkg/providers/nats"
+    "github.com/zero-ops/open-sbt/pkg/providers/postgres"
 )
 
 func main() {
@@ -950,10 +950,10 @@ import (
     "context"
     "log"
     
-    zerosbt "github.com/zero-ops/zero-sbt/pkg"
-    "github.com/zero-ops/zero-sbt/pkg/providers/nats"
-    "github.com/zero-ops/zero-sbt/pkg/providers/crossplane"
-    "github.com/zero-ops/zero-sbt/pkg/providers/argoworkflows"
+    zerosbt "github.com/zero-ops/open-sbt/pkg"
+    "github.com/zero-ops/open-sbt/pkg/providers/nats"
+    "github.com/zero-ops/open-sbt/pkg/providers/crossplane"
+    "github.com/zero-ops/open-sbt/pkg/providers/argoworkflows"
 )
 
 func main() {
@@ -1014,7 +1014,7 @@ package custom
 
 import (
     "context"
-    zerosbt "github.com/zero-ops/zero-sbt/pkg/interfaces"
+    zerosbt "github.com/zero-ops/open-sbt/pkg/interfaces"
 )
 
 type CustomAuth struct {
@@ -1144,9 +1144,9 @@ func main() {
 - **Trade-off**: Additional abstraction layer, but gain agent integration
 
 
-## Comparison: SBT-AWS vs Zero-SBT
+## Comparison: SBT-AWS vs open-sbt
 
-| Aspect | SBT-AWS | Zero-SBT |
+| Aspect | SBT-AWS | open-sbt |
 |--------|---------|----------|
 | **Language** | TypeScript | Go |
 | **Infrastructure** | AWS CDK | Kubernetes-native |
@@ -1294,7 +1294,7 @@ func GetTenant(ctx context.Context, tenantID string) (*Tenant, error) {
 
 ## Conclusion
 
-Zero-SBT provides a Go-based SaaS builder toolkit that adapts the proven architecture patterns from AWS SBT-AWS to the zero-ops platform's technology stack. By following these design principles, developers can build multi-tenant SaaS applications with:
+open-sbt provides a Go-based SaaS builder toolkit that adapts the proven architecture patterns from AWS SBT-AWS to the zero-ops platform's technology stack. By following these design principles, developers can build multi-tenant SaaS applications with:
 
 - **Clear separation of concerns** (Control Plane vs Application Plane)
 - **Pluggable components** (swap implementations without breaking code)
@@ -1305,6 +1305,30 @@ Zero-SBT provides a Go-based SaaS builder toolkit that adapts the proven archite
 - **Cloud-agnostic design** (BYOC model, portable across clouds)
 
 The toolkit abstracts away the complexity of multi-tenant SaaS infrastructure while maintaining flexibility for customization and future evolution.
+
+## Additional Design Sections
+
+The following additional design patterns were discovered from thorough SBT-AWS analysis:
+
+### Tier Management
+**Location:** `docs/open-sbt-tier-management.md`
+
+**Key Insight:** Tiers are attributes on tenants, not separate entities. This flexible approach allows:
+- Simple tier-based provisioning logic
+- Optional centralized tier configuration for quotas
+- Easy tier upgrades/downgrades via tenant updates
+
+### Multi-Tenant Microservice Libraries
+**Location:** `docs/open-sbt-microservice-libraries.md`
+
+**Key Insight:** Inspired by SBT-AWS Token Vending Machine, open-sbt provides Go libraries that handle:
+- Identity token management (JWT validation + tenant context extraction)
+- Tenant-aware logging (auto-inject tenant_id)
+- Tenant-aware metrics (auto-tag with tenant_id)
+- Token vending machine (tenant-scoped credentials)
+- Database isolation (automatic PostgreSQL RLS)
+
+**Benefit:** Application developers focus on business logic while libraries handle multi-tenancy.
 
 ## References
 
@@ -1318,9 +1342,13 @@ The toolkit abstracts away the complexity of multi-tenant SaaS infrastructure wh
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.1  
 **Last Updated:** 2026-03-16  
-**Status:** Draft for Review
+**Status:** Complete - Ready for Review
+
+**Changelog:**
+- v1.1 (2026-03-16): Added Tier Management and Multi-Tenant Microservice Libraries sections based on SBT-AWS analysis
+- v1.0 (2026-03-16): Initial version with core architecture principles
 
 ## Additional Design Principles
 
