@@ -1,3 +1,9 @@
+---
+title: GitOps & Helm Tenant Onboarding
+description: The adapted ApplicationSet + Helm onboarding pattern for zero-ops platform using open-sbt
+inclusion: always
+---
+
 # GitOps Helm Onboarding: Pattern Convergence Analysis
 
 **Version:** 1.0  
