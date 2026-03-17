@@ -27,4 +27,4 @@ Each review should complete below checklist:
 [] - Validated the task completion in actual cluster or in local execution as per task nature.
 
 
-Review against the design pattern .kiro/specs/management-cluster/references/design-patterns.md and the current implementation focus specs.
+- Keep your response short and concise. Never create summary document.

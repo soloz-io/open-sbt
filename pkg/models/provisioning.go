@@ -37,8 +37,10 @@ type DeprovisionResult struct {
 
 // UpdateRequest represents a request to update tenant resources
 type UpdateRequest struct {
-	TenantID string          `json:"tenant_id"`
-	Updates  []ResourceUpdate `json:"updates"`
+	TenantID string           `json:"tenant_id"`
+	Tier     string           `json:"tier,omitempty"`   // new tier for tier_change action
+	Action   string           `json:"action,omitempty"` // activate, deactivate, tier_change
+	Updates  []ResourceUpdate `json:"updates,omitempty"`
 }
 
 // ResourceUpdate represents an update to a specific resource

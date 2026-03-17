@@ -115,14 +115,14 @@
 ### 8. Control Plane Core
 **Note:** This is production code that will be used by both production deployments and E2E tests. No separate test implementations.
 
-- [ ] 8.1 Create ControlPlane struct with interface dependencies (production struct used by all environments)
-- [ ] 8.2 Implement NewControlPlane constructor with validation (production constructor used by main.go and tests)
-- [ ] 8.3 Implement Start method with initialization (production method used by main.go and tests)
-- [ ] 8.4 Implement Stop method with graceful shutdown (production method used by main.go and tests)
-- [ ] 8.5 Setup Gin HTTP server with middleware (production server used by all environments)
-- [ ] 8.6 Implement health check endpoints (production endpoints used by all environments)
-- [ ] 8.7 Add Prometheus metrics endpoints (production endpoints used by all environments)
-- [ ] 8.8 Configure CORS and security headers (production configuration used by all environments)
+- [x] 8.1 Create ControlPlane struct with interface dependencies (production struct used by all environments)
+- [x] 8.2 Implement NewControlPlane constructor with validation (production constructor used by main.go and tests)
+- [x] 8.3 Implement Start method with initialization (production method used by main.go and tests)
+- [x] 8.4 Implement Stop method with graceful shutdown (production method used by main.go and tests)
+- [x] 8.5 Setup Gin HTTP server with middleware (production server used by all environments)
+- [x] 8.6 Implement health check endpoints (production endpoints used by all environments)
+- [x] 8.7 Add Prometheus metrics endpoints (production endpoints used by all environments)
+- [x] 8.8 Configure CORS and security headers (production configuration used by all environments)
 
 ### 9. Tenant Management Service
 **Note:** This is production code that will be used by both production deployments and E2E tests. No separate test implementations.
@@ -176,54 +176,54 @@
 ## Phase 6: Application Plane (Weeks 13-15)
 
 ### 13. Application Plane Core
-- [ ] 13.1 Create ApplicationPlane struct with interface dependencies
-- [ ] 13.2 Implement NewApplicationPlane constructor
-- [ ] 13.3 Implement Start method with event subscriptions
-- [ ] 13.4 Implement Stop method with cleanup
-- [ ] 13.5 Setup event handler registration
-- [ ] 13.6 Add error handling and retry logic
+- [x] 13.1 Create ApplicationPlane struct with interface dependencies
+- [x] 13.2 Implement NewApplicationPlane constructor
+- [x] 13.3 Implement Start method with event subscriptions
+- [x] 13.4 Implement Stop method with cleanup
+- [x] 13.5 Setup event handler registration
+- [x] 13.6 Add error handling and retry logic
 
 ### 14. Provisioning Workflows
-- [ ] 14.1 Implement OnOnboardingRequest event handler
-- [ ] 14.2 Implement OnOffboardingRequest event handler
-- [ ] 14.3 Implement OnActivateRequest event handler
-- [ ] 14.4 Implement OnDeactivateRequest event handler
-- [ ] 14.5 Implement OnTierChanged event handler
-- [ ] 14.6 Add provisioning status tracking
-- [ ] 14.7 Implement error handling and failure events
-- [ ] 14.8 Add provisioning metrics and logging
+- [x] 14.1 Implement OnOnboardingRequest event handler
+- [x] 14.2 Implement OnOffboardingRequest event handler
+- [x] 14.3 Implement OnActivateRequest event handler
+- [x] 14.4 Implement OnDeactivateRequest event handler
+- [x] 14.5 Implement OnTierChanged event handler
+- [x] 14.6 Add provisioning status tracking
+- [x] 14.7 Implement error handling and failure events
+- [x] 14.8 Add provisioning metrics and logging
 
 ### 15. GitOps Helm Provisioner
-- [ ] 15.1 Setup Git repository client with authentication
-- [ ] 15.2 Implement CommitTenantConfig for Git commits
-- [ ] 15.3 Implement RollbackTenantConfig for Git reverts
-- [ ] 15.4 Create Universal Tenant Helm Chart template
-- [ ] 15.5 Implement tier-based Helm values generation
-- [ ] 15.6 Add namespace generation in Helm templates
-- [ ] 15.7 Add ResourceQuota generation based on tier
-- [ ] 15.8 Add NetworkPolicy generation for tenant isolation
-- [ ] 15.9 Add RoleBinding generation for RBAC
-- [ ] 15.10 Add Crossplane XR generation for infrastructure
-- [ ] 15.11 Implement warm pool management (ClaimWarmSlot, RefillWarmPool)
-- [ ] 15.12 Implement GetWarmPoolStatus for monitoring
-- [ ] 15.13 Add webhook-triggered sync (TriggerSync, TriggerWebhookSync)
-- [ ] 15.14 Implement GetProvisioningStatus for reconciliation
-- [ ] 15.15 Add ArgoCD ApplicationSet configuration
-- [ ] 15.16 Implement Git Directory Generator setup
+- [x] 15.1 Setup Git repository client with authentication
+- [x] 15.2 Implement CommitTenantConfig for Git commits
+- [x] 15.3 Implement RollbackTenantConfig for Git reverts
+- [x] 15.4 Create Universal Tenant Helm Chart template
+- [x] 15.5 Implement tier-based Helm values generation
+- [x] 15.6 Add namespace generation in Helm templates
+- [x] 15.7 Add ResourceQuota generation based on tier
+- [x] 15.8 Add NetworkPolicy generation for tenant isolation
+- [x] 15.9 Add RoleBinding generation for RBAC
+- [x] 15.10 Add Crossplane XR generation for infrastructure
+- [x] 15.11 Implement warm pool management (ClaimWarmSlot, RefillWarmPool)
+- [x] 15.12 Implement GetWarmPoolStatus for monitoring
+- [x] 15.13 Add webhook-triggered sync (TriggerSync, TriggerWebhookSync)
+- [x] 15.14 Implement GetProvisioningStatus for reconciliation
+- [x] 15.15 Add ArgoCD ApplicationSet configuration
+- [x] 15.16 Implement Git Directory Generator setup
 
 ### 16. ArgoCD Agent Integration
-- [ ] 16.1 Implement argocd-agent principal component
-- [ ] 16.2 Add argocd-agent deployment to Universal Tenant Helm Chart
-- [ ] 16.3 Implement agent credential generation with mTLS
-- [ ] 16.4 Configure managed mode for basic/standard tiers
-- [ ] 16.5 Configure autonomous mode for premium/enterprise tiers
-- [ ] 16.6 Implement agent-principal connection logic
-- [ ] 16.7 Add agent status monitoring and heartbeat
-- [ ] 16.8 Implement agent application filtering by namespace
-- [ ] 16.9 Add agent lifecycle management (deploy, update, remove)
-- [ ] 16.10 Publish opensbt_agentDeployed and opensbt_agentConnected events
-- [ ] 16.11 Implement IArgoCDAgent interface methods
-- [ ] 16.12 Add agent configuration management via GitOps
+- [x] 16.1 Implement argocd-agent principal component
+- [x] 16.2 Add argocd-agent deployment to Universal Tenant Helm Chart
+- [x] 16.3 Implement agent credential generation with mTLS
+- [x] 16.4 Configure managed mode for basic/standard tiers
+- [x] 16.5 Configure autonomous mode for premium/enterprise tiers
+- [x] 16.6 Implement agent-principal connection logic
+- [x] 16.7 Add agent status monitoring and heartbeat
+- [x] 16.8 Implement agent application filtering by namespace
+- [x] 16.9 Add agent lifecycle management (deploy, update, remove)
+- [x] 16.10 Publish opensbt_agentDeployed and opensbt_agentConnected events
+- [x] 16.11 Implement IArgoCDAgent interface methods
+- [x] 16.12 Add agent configuration management via GitOps
 
 ## Phase 7: Tier Management (Weeks 16-17)
 

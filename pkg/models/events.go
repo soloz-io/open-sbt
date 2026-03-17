@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Event represents a standard event structure for inter-plane communication
 type Event struct {
@@ -12,6 +15,18 @@ type Event struct {
 	Region     string                 `json:"region,omitempty"`
 	Resources  []string               `json:"resources,omitempty"`
 	Detail     map[string]interface{} `json:"detail"`
+}
+
+// NewEvent creates an Event with a unique ID, current timestamp, and version 1.0.
+func NewEvent(detailType, source string, detail map[string]interface{}) Event {
+	return Event{
+		ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+		Version:    "1.0",
+		DetailType: detailType,
+		Source:     source,
+		Time:       time.Now().UTC(),
+		Detail:     detail,
+	}
 }
 
 // EventDefinition represents the definition of a standard event
