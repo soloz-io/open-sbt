@@ -62,6 +62,21 @@ The architecture follows a strict separation between Control Plane and Applicati
 
 ### Core Interface Definitions
 
+The open-sbt toolkit provides ten core interfaces that abstract all major SaaS functionality:
+
+1. **IAuth**: Authentication and authorization provider
+2. **IEventBus**: Message bus for inter-plane communication  
+3. **IProvisioner**: Tenant resource provisioning and management
+4. **IStorage**: Tenant-aware data persistence
+5. **IBilling**: Billing system integration
+6. **IMetering**: Usage metering and tracking
+7. **ITierManager**: Tier configuration and quota management
+8. **ISecretManager**: Secure secret management for GitOps
+9. **ISystemAdmin**: Platform-level administration capabilities
+10. **IApplicationPlaneUtils**: Utility functions for Application Plane operations
+
+Each interface is designed to be provider-agnostic, allowing implementations to be swapped without breaking application code.
+
 #### IAuth Interface
 
 The authentication and authorization provider interface handles user management and tenant-scoped authentication.
@@ -1161,6 +1176,579 @@ func TestTierQuotaEnforcement(t *testing.T) {
 7. **Document Tier Differences**: Clearly communicate tier capabilities to customers
 8. **Monitor Tier Usage**: Track resource usage per tier for pricing optimization
 
+#### ISystemAdmin Interface
+
+The system admin interface provides platform-level administration capabilities separate from tenant user management.
+
+```go
+// ISystemAdmin provides platform-level administration capabilities
+type ISystemAdmin interface {
+    // Platform Administrator Management
+    CreatePlatformAdmin(ctx context.Context, admin PlatformAdmin) error
+    GetPlatformAdmin(ctx context.Context, adminID string) (*PlatformAdmin, error)
+    UpdatePlatformAdmin(ctx context.Context, adminID string, updates PlatformAdminUpdates) error
+    DeletePlatformAdmin(ctx context.Context, adminID string) error
+    ListPlatformAdmins(ctx context.Context, filters PlatformAdminFilters) ([]PlatformAdmin, error)
+    
+    // System Health and Monitoring
+    GetPlatformMetrics(ctx context.Context) (*PlatformMetrics, error)
+    GetSystemHealth(ctx context.Context) (*SystemHealth, error)
+    GetResourceUtilization(ctx context.Context) (*ResourceUtilization, error)
+    
+    // Platform Configuration
+    GetPlatformConfig(ctx context.Context) (*PlatformConfig, error)
+    UpdatePlatformConfig(ctx context.Context, updates PlatformConfigUpdates) error
+    
+    // Emergency Operations
+    EnableMaintenanceMode(ctx context.Context, reason string) error
+    DisableMaintenanceMode(ctx context.Context) error
+    GetMaintenanceStatus(ctx context.Context) (*MaintenanceStatus, error)
+    
+    // Audit and Compliance
+    GetAuditLogs(ctx context.Context, filters AuditLogFilters) ([]AuditLog, error)
+    ExportAuditLogs(ctx context.Context, period TimePeriod, format string) ([]byte, error)
+    
+    // Backup and Recovery
+    CreateSystemBackup(ctx context.Context, backupType string) (*BackupResult, error)
+    ListSystemBackups(ctx context.Context) ([]BackupMetadata, error)
+    RestoreFromBackup(ctx context.Context, backupID string) (*RestoreResult, error)
+    
+    // Capacity Planning
+    GetCapacityMetrics(ctx context.Context) (*CapacityMetrics, error)
+    PredictCapacityNeeds(ctx context.Context, timeframe time.Duration) (*CapacityPrediction, error)
+}
+
+// System Admin Types
+type PlatformAdmin struct {
+    ID          string                 `json:"id"`
+    Email       string                 `json:"email"`
+    Name        string                 `json:"name"`
+    Roles       []string               `json:"roles"`       // "super_admin", "platform_admin", "read_only"
+    Permissions []string               `json:"permissions"` // Granular permissions
+    Active      bool                   `json:"active"`
+    LastLogin   *time.Time             `json:"last_login,omitempty"`
+    Metadata    map[string]interface{} `json:"metadata"`
+    CreatedAt   time.Time              `json:"created_at"`
+    UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+type PlatformMetrics struct {
+    TotalTenants       int                    `json:"total_tenants"`
+    ActiveTenants      int                    `json:"active_tenants"`
+    TenantsByTier      map[string]int         `json:"tenants_by_tier"`
+    TotalUsers         int                    `json:"total_users"`
+    SystemUptime       time.Duration          `json:"system_uptime"`
+    EventsProcessed    int64                  `json:"events_processed"`
+    ResourceUsage      ResourceUtilization    `json:"resource_usage"`
+    PerformanceMetrics PerformanceMetrics     `json:"performance_metrics"`
+    CollectedAt        time.Time              `json:"collected_at"`
+}
+
+type SystemHealth struct {
+    Status           string                    `json:"status"` // "healthy", "degraded", "critical"
+    Components       map[string]ComponentHealth `json:"components"`
+    Issues           []HealthIssue             `json:"issues"`
+    LastHealthCheck  time.Time                 `json:"last_health_check"`
+    OverallScore     float64                   `json:"overall_score"` // 0-100
+}
+
+type ComponentHealth struct {
+    Name        string    `json:"name"`
+    Status      string    `json:"status"`
+    LastCheck   time.Time `json:"last_check"`
+    ResponseTime time.Duration `json:"response_time"`
+    ErrorRate   float64   `json:"error_rate"`
+    Message     string    `json:"message,omitempty"`
+}
+
+type ResourceUtilization struct {
+    CPU        ResourceMetric `json:"cpu"`
+    Memory     ResourceMetric `json:"memory"`
+    Storage    ResourceMetric `json:"storage"`
+    Network    ResourceMetric `json:"network"`
+    Database   ResourceMetric `json:"database"`
+    EventBus   ResourceMetric `json:"event_bus"`
+}
+
+type ResourceMetric struct {
+    Used      float64 `json:"used"`
+    Total     float64 `json:"total"`
+    Percent   float64 `json:"percent"`
+    Unit      string  `json:"unit"`
+    Threshold struct {
+        Warning  float64 `json:"warning"`
+        Critical float64 `json:"critical"`
+    } `json:"threshold"`
+}
+
+type MaintenanceStatus struct {
+    Enabled     bool      `json:"enabled"`
+    Reason      string    `json:"reason,omitempty"`
+    StartedAt   *time.Time `json:"started_at,omitempty"`
+    EstimatedEnd *time.Time `json:"estimated_end,omitempty"`
+    StartedBy   string    `json:"started_by,omitempty"`
+}
+
+type AuditLog struct {
+    ID          string                 `json:"id"`
+    Timestamp   time.Time              `json:"timestamp"`
+    Actor       string                 `json:"actor"`       // Admin ID or system
+    ActorType   string                 `json:"actor_type"`  // "admin", "system", "tenant"
+    Action      string                 `json:"action"`
+    Resource    string                 `json:"resource"`
+    ResourceID  string                 `json:"resource_id,omitempty"`
+    TenantID    string                 `json:"tenant_id,omitempty"`
+    Details     map[string]interface{} `json:"details"`
+    Result      string                 `json:"result"`      // "success", "failure", "partial"
+    IPAddress   string                 `json:"ip_address,omitempty"`
+    UserAgent   string                 `json:"user_agent,omitempty"`
+}
+
+type BackupResult struct {
+    ID          string    `json:"id"`
+    Type        string    `json:"type"`
+    Status      string    `json:"status"`
+    Size        int64     `json:"size"`
+    Location    string    `json:"location"`
+    CreatedAt   time.Time `json:"created_at"`
+    CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+type CapacityMetrics struct {
+    CurrentCapacity    ResourceCapacity `json:"current_capacity"`
+    ProjectedGrowth    GrowthProjection `json:"projected_growth"`
+    RecommendedActions []string         `json:"recommended_actions"`
+    AnalyzedAt         time.Time        `json:"analyzed_at"`
+}
+
+type ResourceCapacity struct {
+    Tenants     CapacityMetric `json:"tenants"`
+    Users       CapacityMetric `json:"users"`
+    Storage     CapacityMetric `json:"storage"`
+    Compute     CapacityMetric `json:"compute"`
+    Events      CapacityMetric `json:"events"`
+}
+
+type CapacityMetric struct {
+    Current   float64 `json:"current"`
+    Maximum   float64 `json:"maximum"`
+    Utilization float64 `json:"utilization"`
+    Unit      string  `json:"unit"`
+}
+
+type GrowthProjection struct {
+    Period      time.Duration `json:"period"`
+    TenantGrowth float64      `json:"tenant_growth"`
+    UserGrowth   float64      `json:"user_growth"`
+    StorageGrowth float64     `json:"storage_growth"`
+    Confidence   float64      `json:"confidence"` // 0-1
+}
+
+type CapacityPrediction struct {
+    Timeframe           time.Duration    `json:"timeframe"`
+    PredictedCapacity   ResourceCapacity `json:"predicted_capacity"`
+    CapacityShortfalls  []string         `json:"capacity_shortfalls"`
+    RecommendedActions  []string         `json:"recommended_actions"`
+    PredictedAt         time.Time        `json:"predicted_at"`
+}
+```
+
+#### IApplicationPlaneUtils Interface
+
+The application plane utils interface provides utility functions for Application Plane resource management and validation.
+
+```go
+// IApplicationPlaneUtils provides utility functions for Application Plane operations
+type IApplicationPlaneUtils interface {
+    // Resource Configuration Validation
+    ValidateResourceConfiguration(ctx context.Context, config ResourceConfig) (*ValidationResult, error)
+    ValidateResourceDependencies(ctx context.Context, resources []ResourceSpec) (*DependencyValidation, error)
+    ValidateResourceConstraints(ctx context.Context, tenantID string, resources []ResourceSpec) error
+    
+    // Resource Naming and Generation
+    GenerateResourceNames(ctx context.Context, tenantID string, tier string) (*ResourceNames, error)
+    GenerateResourceTemplate(ctx context.Context, resourceType string, tier string) (*ResourceTemplate, error)
+    CalculateResourceRequirements(ctx context.Context, tier string, usage ResourceUsage) (*ResourceRequirements, error)
+    
+    // Resource Cost Estimation
+    EstimateResourceCosts(ctx context.Context, resources []ResourceSpec, period time.Duration) (*CostEstimate, error)
+    OptimizeResourceAllocation(ctx context.Context, tenantID string, currentUsage ResourceUsage) (*OptimizationRecommendation, error)
+    
+    // Resource Health and Monitoring
+    CheckResourceHealth(ctx context.Context, tenantID string, resourceID string) (*ResourceHealth, error)
+    GetResourceMetrics(ctx context.Context, tenantID string, resourceID string, period TimePeriod) (*ResourceMetrics, error)
+    
+    // Batch Operations
+    ValidateBatchOperation(ctx context.Context, operation BatchOperation) (*BatchValidationResult, error)
+    ExecuteBatchOperation(ctx context.Context, operation BatchOperation) (*BatchOperationResult, error)
+    
+    // Migration and Upgrade Utilities
+    PlanResourceMigration(ctx context.Context, tenantID string, targetTier string) (*MigrationPlan, error)
+    ValidateMigrationPlan(ctx context.Context, plan MigrationPlan) (*MigrationValidation, error)
+    ExecuteResourceMigration(ctx context.Context, plan MigrationPlan) (*MigrationResult, error)
+    
+    // Custom Resource Types
+    RegisterCustomResourceType(ctx context.Context, resourceType CustomResourceType) error
+    GetCustomResourceType(ctx context.Context, typeName string) (*CustomResourceType, error)
+    ListCustomResourceTypes(ctx context.Context) ([]CustomResourceType, error)
+    ValidateCustomResource(ctx context.Context, resource CustomResourceSpec) (*ValidationResult, error)
+}
+
+// Application Plane Utils Types
+type ResourceConfig struct {
+    TenantID    string                 `json:"tenant_id"`
+    Tier        string                 `json:"tier"`
+    Resources   []ResourceSpec         `json:"resources"`
+    Dependencies []ResourceDependency  `json:"dependencies"`
+    Constraints []ResourceConstraint   `json:"constraints"`
+    Metadata    map[string]interface{} `json:"metadata"`
+}
+
+type ValidationResult struct {
+    Valid    bool                   `json:"valid"`
+    Errors   []ValidationError      `json:"errors"`
+    Warnings []ValidationWarning    `json:"warnings"`
+    Score    float64                `json:"score"` // 0-100
+}
+
+type ValidationError struct {
+    Field   string `json:"field"`
+    Code    string `json:"code"`
+    Message string `json:"message"`
+    Value   interface{} `json:"value,omitempty"`
+}
+
+type ValidationWarning struct {
+    Field   string `json:"field"`
+    Code    string `json:"code"`
+    Message string `json:"message"`
+    Impact  string `json:"impact"` // "low", "medium", "high"
+}
+
+type DependencyValidation struct {
+    Valid        bool                    `json:"valid"`
+    Dependencies []ResolvedDependency    `json:"dependencies"`
+    Conflicts    []DependencyConflict    `json:"conflicts"`
+    MissingDeps  []MissingDependency     `json:"missing_dependencies"`
+}
+
+type ResourceDependency struct {
+    ResourceID   string   `json:"resource_id"`
+    DependsOn    []string `json:"depends_on"`
+    DependencyType string `json:"dependency_type"` // "hard", "soft", "optional"
+}
+
+type ResourceConstraint struct {
+    Type        string      `json:"type"`        // "cpu", "memory", "storage", "network"
+    Operator    string      `json:"operator"`    // "lt", "lte", "gt", "gte", "eq"
+    Value       interface{} `json:"value"`
+    Message     string      `json:"message"`
+}
+
+type ResourceNames struct {
+    TenantID    string            `json:"tenant_id"`
+    Tier        string            `json:"tier"`
+    Names       map[string]string `json:"names"`       // resource_type -> generated_name
+    Prefixes    map[string]string `json:"prefixes"`    // resource_type -> prefix
+    Suffixes    map[string]string `json:"suffixes"`    // resource_type -> suffix
+    Conventions NamingConventions `json:"conventions"`
+}
+
+type NamingConventions struct {
+    TenantPrefix    string `json:"tenant_prefix"`
+    TierSuffix      bool   `json:"tier_suffix"`
+    MaxLength       int    `json:"max_length"`
+    AllowedChars    string `json:"allowed_chars"`
+    CaseStyle       string `json:"case_style"` // "lower", "upper", "camel", "kebab"
+}
+
+type ResourceTemplate struct {
+    Type        string                 `json:"type"`
+    Tier        string                 `json:"tier"`
+    Template    map[string]interface{} `json:"template"`
+    Variables   []TemplateVariable     `json:"variables"`
+    Defaults    map[string]interface{} `json:"defaults"`
+    Validation  []ValidationRule       `json:"validation"`
+}
+
+type TemplateVariable struct {
+    Name        string      `json:"name"`
+    Type        string      `json:"type"`
+    Required    bool        `json:"required"`
+    Default     interface{} `json:"default,omitempty"`
+    Description string      `json:"description"`
+}
+
+type ValidationRule struct {
+    Field    string      `json:"field"`
+    Rule     string      `json:"rule"`
+    Value    interface{} `json:"value,omitempty"`
+    Message  string      `json:"message"`
+}
+
+type ResourceRequirements struct {
+    CPU         string                 `json:"cpu"`
+    Memory      string                 `json:"memory"`
+    Storage     string                 `json:"storage"`
+    Network     string                 `json:"network"`
+    Replicas    int                    `json:"replicas"`
+    Custom      map[string]interface{} `json:"custom"`
+    Tier        string                 `json:"tier"`
+    Estimated   bool                   `json:"estimated"`
+}
+
+type CostEstimate struct {
+    TotalCost      float64                `json:"total_cost"`
+    Currency       string                 `json:"currency"`
+    Period         time.Duration          `json:"period"`
+    CostBreakdown  map[string]float64     `json:"cost_breakdown"`  // resource_type -> cost
+    Assumptions    []string               `json:"assumptions"`
+    Confidence     float64                `json:"confidence"` // 0-1
+    EstimatedAt    time.Time              `json:"estimated_at"`
+}
+
+type OptimizationRecommendation struct {
+    TenantID        string                    `json:"tenant_id"`
+    CurrentCost     float64                   `json:"current_cost"`
+    OptimizedCost   float64                   `json:"optimized_cost"`
+    Savings         float64                   `json:"savings"`
+    Recommendations []ResourceOptimization    `json:"recommendations"`
+    Impact          OptimizationImpact        `json:"impact"`
+    GeneratedAt     time.Time                 `json:"generated_at"`
+}
+
+type ResourceOptimization struct {
+    ResourceID      string                 `json:"resource_id"`
+    ResourceType    string                 `json:"resource_type"`
+    Action          string                 `json:"action"` // "scale_down", "scale_up", "replace", "remove"
+    CurrentConfig   map[string]interface{} `json:"current_config"`
+    RecommendedConfig map[string]interface{} `json:"recommended_config"`
+    Reason          string                 `json:"reason"`
+    Impact          string                 `json:"impact"` // "low", "medium", "high"
+    Savings         float64                `json:"savings"`
+}
+
+type OptimizationImpact struct {
+    Performance string  `json:"performance"` // "improved", "maintained", "degraded"
+    Reliability string  `json:"reliability"` // "improved", "maintained", "degraded"
+    Security    string  `json:"security"`    // "improved", "maintained", "degraded"
+    Complexity  string  `json:"complexity"`  // "reduced", "maintained", "increased"
+    RiskLevel   string  `json:"risk_level"`  // "low", "medium", "high"
+}
+
+type ResourceHealth struct {
+    ResourceID   string                 `json:"resource_id"`
+    ResourceType string                 `json:"resource_type"`
+    Status       string                 `json:"status"` // "healthy", "warning", "critical", "unknown"
+    Checks       []HealthCheck          `json:"checks"`
+    LastCheck    time.Time              `json:"last_check"`
+    Uptime       time.Duration          `json:"uptime"`
+    Metadata     map[string]interface{} `json:"metadata"`
+}
+
+type HealthCheck struct {
+    Name        string    `json:"name"`
+    Status      string    `json:"status"`
+    Message     string    `json:"message,omitempty"`
+    CheckedAt   time.Time `json:"checked_at"`
+    Duration    time.Duration `json:"duration"`
+    Threshold   interface{} `json:"threshold,omitempty"`
+    Value       interface{} `json:"value,omitempty"`
+}
+
+type ResourceMetrics struct {
+    ResourceID   string                    `json:"resource_id"`
+    ResourceType string                    `json:"resource_type"`
+    Period       TimePeriod                `json:"period"`
+    Metrics      map[string]MetricSeries   `json:"metrics"`
+    Aggregations map[string]float64        `json:"aggregations"` // metric_name -> aggregated_value
+    CollectedAt  time.Time                 `json:"collected_at"`
+}
+
+type MetricSeries struct {
+    Name        string           `json:"name"`
+    Unit        string           `json:"unit"`
+    DataPoints  []MetricDataPoint `json:"data_points"`
+    Aggregation string           `json:"aggregation"` // "avg", "sum", "min", "max"
+}
+
+type MetricDataPoint struct {
+    Timestamp time.Time `json:"timestamp"`
+    Value     float64   `json:"value"`
+}
+
+type BatchOperation struct {
+    ID          string                 `json:"id"`
+    Type        string                 `json:"type"` // "create", "update", "delete", "migrate"
+    TenantIDs   []string               `json:"tenant_ids"`
+    Resources   []ResourceSpec         `json:"resources"`
+    Parameters  map[string]interface{} `json:"parameters"`
+    Options     BatchOptions           `json:"options"`
+}
+
+type BatchOptions struct {
+    Parallel        bool          `json:"parallel"`
+    MaxConcurrency  int           `json:"max_concurrency"`
+    FailureMode     string        `json:"failure_mode"` // "stop", "continue", "rollback"
+    Timeout         time.Duration `json:"timeout"`
+    DryRun          bool          `json:"dry_run"`
+}
+
+type BatchValidationResult struct {
+    Valid           bool                      `json:"valid"`
+    TenantResults   map[string]ValidationResult `json:"tenant_results"`
+    GlobalErrors    []ValidationError         `json:"global_errors"`
+    EstimatedTime   time.Duration             `json:"estimated_time"`
+    ResourceCount   int                       `json:"resource_count"`
+}
+
+type BatchOperationResult struct {
+    ID              string                        `json:"id"`
+    Status          string                        `json:"status"` // "completed", "partial", "failed"
+    TenantResults   map[string]OperationResult    `json:"tenant_results"`
+    SuccessCount    int                           `json:"success_count"`
+    FailureCount    int                           `json:"failure_count"`
+    StartedAt       time.Time                     `json:"started_at"`
+    CompletedAt     *time.Time                    `json:"completed_at,omitempty"`
+    Duration        time.Duration                 `json:"duration"`
+}
+
+type OperationResult struct {
+    TenantID    string    `json:"tenant_id"`
+    Status      string    `json:"status"`
+    Resources   []Resource `json:"resources"`
+    Error       string    `json:"error,omitempty"`
+    Duration    time.Duration `json:"duration"`
+}
+
+type MigrationPlan struct {
+    TenantID        string                 `json:"tenant_id"`
+    FromTier        string                 `json:"from_tier"`
+    ToTier          string                 `json:"to_tier"`
+    Steps           []MigrationStep        `json:"steps"`
+    EstimatedTime   time.Duration          `json:"estimated_time"`
+    RiskAssessment  RiskAssessment         `json:"risk_assessment"`
+    Rollback        RollbackPlan           `json:"rollback"`
+    CreatedAt       time.Time              `json:"created_at"`
+}
+
+type MigrationStep struct {
+    ID          string                 `json:"id"`
+    Type        string                 `json:"type"` // "create", "update", "delete", "validate"
+    Description string                 `json:"description"`
+    Resources   []ResourceSpec         `json:"resources"`
+    Dependencies []string              `json:"dependencies"` // Step IDs this step depends on
+    Parameters  map[string]interface{} `json:"parameters"`
+    Timeout     time.Duration          `json:"timeout"`
+    Rollback    RollbackStep           `json:"rollback"`
+}
+
+type RiskAssessment struct {
+    OverallRisk     string        `json:"overall_risk"` // "low", "medium", "high"
+    Risks           []Risk        `json:"risks"`
+    Mitigations     []Mitigation  `json:"mitigations"`
+    DowntimeRisk    string        `json:"downtime_risk"`
+    DataLossRisk    string        `json:"data_loss_risk"`
+}
+
+type Risk struct {
+    ID          string  `json:"id"`
+    Description string  `json:"description"`
+    Impact      string  `json:"impact"`      // "low", "medium", "high"
+    Probability string  `json:"probability"` // "low", "medium", "high"
+    Category    string  `json:"category"`    // "performance", "security", "data", "availability"
+}
+
+type Mitigation struct {
+    RiskID      string `json:"risk_id"`
+    Description string `json:"description"`
+    Action      string `json:"action"`
+    Implemented bool   `json:"implemented"`
+}
+
+type RollbackPlan struct {
+    Steps       []RollbackStep `json:"steps"`
+    Automatic   bool           `json:"automatic"`
+    Timeout     time.Duration  `json:"timeout"`
+    Triggers    []string       `json:"triggers"` // Conditions that trigger rollback
+}
+
+type RollbackStep struct {
+    ID          string                 `json:"id"`
+    Description string                 `json:"description"`
+    Action      string                 `json:"action"`
+    Parameters  map[string]interface{} `json:"parameters"`
+}
+
+type MigrationValidation struct {
+    Valid           bool                  `json:"valid"`
+    Errors          []ValidationError     `json:"errors"`
+    Warnings        []ValidationWarning   `json:"warnings"`
+    Prerequisites   []Prerequisite        `json:"prerequisites"`
+    EstimatedTime   time.Duration         `json:"estimated_time"`
+    ResourceChanges ResourceChangeSummary `json:"resource_changes"`
+}
+
+type Prerequisite struct {
+    ID          string `json:"id"`
+    Description string `json:"description"`
+    Met         bool   `json:"met"`
+    Required    bool   `json:"required"`
+    CheckedAt   time.Time `json:"checked_at"`
+}
+
+type ResourceChangeSummary struct {
+    Created []string `json:"created"`
+    Updated []string `json:"updated"`
+    Deleted []string `json:"deleted"`
+    Total   int      `json:"total"`
+}
+
+type MigrationResult struct {
+    PlanID          string                    `json:"plan_id"`
+    Status          string                    `json:"status"` // "completed", "failed", "rolled_back"
+    StepResults     map[string]StepResult     `json:"step_results"`
+    CompletedSteps  int                       `json:"completed_steps"`
+    TotalSteps      int                       `json:"total_steps"`
+    StartedAt       time.Time                 `json:"started_at"`
+    CompletedAt     *time.Time                `json:"completed_at,omitempty"`
+    Duration        time.Duration             `json:"duration"`
+    RollbackReason  string                    `json:"rollback_reason,omitempty"`
+}
+
+type StepResult struct {
+    StepID      string        `json:"step_id"`
+    Status      string        `json:"status"`
+    StartedAt   time.Time     `json:"started_at"`
+    CompletedAt *time.Time    `json:"completed_at,omitempty"`
+    Duration    time.Duration `json:"duration"`
+    Error       string        `json:"error,omitempty"`
+    Resources   []Resource    `json:"resources"`
+}
+
+type CustomResourceType struct {
+    Name            string                 `json:"name"`
+    Version         string                 `json:"version"`
+    Description     string                 `json:"description"`
+    Schema          map[string]interface{} `json:"schema"`          // JSON Schema for validation
+    DefaultConfig   map[string]interface{} `json:"default_config"`
+    SupportedTiers  []string               `json:"supported_tiers"`
+    Dependencies    []string               `json:"dependencies"`    // Other resource types this depends on
+    ProvisionerHints map[string]interface{} `json:"provisioner_hints"` // Hints for provisioners
+    CreatedAt       time.Time              `json:"created_at"`
+    UpdatedAt       time.Time              `json:"updated_at"`
+}
+
+type CustomResourceSpec struct {
+    Type       string                 `json:"type"`
+    Name       string                 `json:"name"`
+    Config     map[string]interface{} `json:"config"`
+    TenantID   string                 `json:"tenant_id"`
+    Tier       string                 `json:"tier"`
+    Metadata   map[string]interface{} `json:"metadata"`
+}
+```
+
 #### ISecretManager Interface
 
 The secret manager interface provides secure secret management for GitOps workflows (Gap 8 Fix).
@@ -1232,6 +1820,352 @@ type SecretFilters struct {
     Name     string   `json:"name,omitempty"`
     Limit    int      `json:"limit,omitempty"`
     Offset   int      `json:"offset,omitempty"`
+}
+```
+
+#### IArgoCDAgent Interface
+
+The ArgoCD agent interface provides distributed GitOps agent management capabilities for multi-cluster and edge deployments.
+
+```go
+// IArgoCDAgent provides distributed GitOps agent management capabilities
+type IArgoCDAgent interface {
+    // Agent Lifecycle Management
+    DeployAgent(ctx context.Context, req AgentDeployRequest) (*AgentDeployResult, error)
+    UpdateAgent(ctx context.Context, agentID string, updates AgentUpdates) (*AgentUpdateResult, error)
+    RemoveAgent(ctx context.Context, agentID string) error
+    
+    // Agent Status and Monitoring
+    GetAgentStatus(ctx context.Context, agentID string) (*AgentStatus, error)
+    ListAgents(ctx context.Context, filters AgentFilters) ([]AgentInfo, error)
+    GetAgentHealth(ctx context.Context, agentID string) (*AgentHealth, error)
+    
+    // Principal Management
+    StartPrincipal(ctx context.Context, config PrincipalConfig) error
+    StopPrincipal(ctx context.Context) error
+    GetPrincipalStatus(ctx context.Context) (*PrincipalStatus, error)
+    
+    // Agent-Principal Communication
+    RegisterAgent(ctx context.Context, registration AgentRegistration) (*AgentCredentials, error)
+    RevokeAgent(ctx context.Context, agentID string) error
+    RefreshAgentCredentials(ctx context.Context, agentID string) (*AgentCredentials, error)
+    
+    // Application Management
+    SyncApplications(ctx context.Context, agentID string, applications []ApplicationSpec) error
+    GetApplicationStatus(ctx context.Context, agentID string, appName string) (*ApplicationStatus, error)
+    ListApplications(ctx context.Context, agentID string) ([]ApplicationInfo, error)
+    
+    // Configuration Management
+    UpdateAgentConfig(ctx context.Context, agentID string, config AgentConfig) error
+    GetAgentConfig(ctx context.Context, agentID string) (*AgentConfig, error)
+    ValidateAgentConfig(ctx context.Context, config AgentConfig) (*ValidationResult, error)
+}
+
+// ArgoCD Agent Types
+type AgentDeployRequest struct {
+    TenantID          string                 `json:"tenant_id"`
+    AgentID           string                 `json:"agent_id"`
+    Mode              string                 `json:"mode"`              // "managed" or "autonomous"
+    Namespace         string                 `json:"namespace"`
+    PrincipalEndpoint string                 `json:"principal_endpoint"`
+    TLSConfig         *AgentTLSConfig        `json:"tls_config,omitempty"`
+    Config            map[string]interface{} `json:"config"`
+    Resources         *ResourceRequirements  `json:"resources,omitempty"`
+}
+
+type AgentDeployResult struct {
+    AgentID       string            `json:"agent_id"`
+    Status        string            `json:"status"`
+    Endpoint      string            `json:"endpoint,omitempty"`
+    Credentials   *AgentCredentials `json:"credentials"`
+    DeployedAt    time.Time         `json:"deployed_at"`
+    Metadata      map[string]string `json:"metadata"`
+}
+
+type AgentStatus struct {
+    AgentID           string                 `json:"agent_id"`
+    TenantID          string                 `json:"tenant_id"`
+    Status            string                 `json:"status"`            // "connected", "disconnected", "error"
+    Mode              string                 `json:"mode"`
+    Version           string                 `json:"version"`
+    LastHeartbeat     time.Time              `json:"last_heartbeat"`
+    ConnectedSince    time.Time              `json:"connected_since,omitempty"`
+    ApplicationCount  int                    `json:"application_count"`
+    SyncStatus        string                 `json:"sync_status"`
+    HealthStatus      string                 `json:"health_status"`
+    Metadata          map[string]interface{} `json:"metadata"`
+}
+
+type AgentInfo struct {
+    AgentID     string    `json:"agent_id"`
+    TenantID    string    `json:"tenant_id"`
+    Mode        string    `json:"mode"`
+    Status      string    `json:"status"`
+    Namespace   string    `json:"namespace"`
+    DeployedAt  time.Time `json:"deployed_at"`
+    LastSeen    time.Time `json:"last_seen"`
+}
+
+type AgentHealth struct {
+    AgentID       string                 `json:"agent_id"`
+    Healthy       bool                   `json:"healthy"`
+    Status        string                 `json:"status"`
+    LastCheck     time.Time              `json:"last_check"`
+    Checks        map[string]HealthCheck `json:"checks"`
+    ErrorMessage  string                 `json:"error_message,omitempty"`
+}
+
+type HealthCheck struct {
+    Name      string    `json:"name"`
+    Status    string    `json:"status"`
+    Message   string    `json:"message,omitempty"`
+    CheckedAt time.Time `json:"checked_at"`
+}
+
+type PrincipalConfig struct {
+    Port              int                    `json:"port"`
+    TLSConfig         *PrincipalTLSConfig    `json:"tls_config,omitempty"`
+    RedisConfig       *RedisConfig           `json:"redis_config,omitempty"`
+    MetricsPort       int                    `json:"metrics_port,omitempty"`
+    LogLevel          string                 `json:"log_level,omitempty"`
+    EnableCompression bool                   `json:"enable_compression,omitempty"`
+    Metadata          map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type PrincipalStatus struct {
+    Status        string    `json:"status"`        // "running", "stopped", "error"
+    Port          int       `json:"port"`
+    ConnectedAgents int     `json:"connected_agents"`
+    StartedAt     time.Time `json:"started_at,omitempty"`
+    Version       string    `json:"version"`
+    ErrorMessage  string    `json:"error_message,omitempty"`
+}
+
+type AgentRegistration struct {
+    AgentID       string                 `json:"agent_id"`
+    TenantID      string                 `json:"tenant_id"`
+    Mode          string                 `json:"mode"`
+    Namespace     string                 `json:"namespace"`
+    Version       string                 `json:"version"`
+    Capabilities  []string               `json:"capabilities"`
+    Metadata      map[string]interface{} `json:"metadata"`
+}
+
+type AgentCredentials struct {
+    AgentID       string    `json:"agent_id"`
+    ClientCert    []byte    `json:"client_cert"`
+    ClientKey     []byte    `json:"client_key"`
+    CACert        []byte    `json:"ca_cert"`
+    Username      string    `json:"username,omitempty"`
+    Password      string    `json:"password,omitempty"`
+    ExpiresAt     time.Time `json:"expires_at"`
+}
+
+type AgentTLSConfig struct {
+    ClientCertSecret string `json:"client_cert_secret"`
+    ClientKeySecret  string `json:"client_key_secret"`
+    CACertSecret     string `json:"ca_cert_secret"`
+    ServerName       string `json:"server_name,omitempty"`
+    InsecureSkipVerify bool `json:"insecure_skip_verify,omitempty"`
+}
+
+type PrincipalTLSConfig struct {
+    CertFile string `json:"cert_file"`
+    KeyFile  string `json:"key_file"`
+    CAFile   string `json:"ca_file,omitempty"`
+}
+
+type RedisConfig struct {
+    Address  string `json:"address"`
+    Username string `json:"username,omitempty"`
+    Password string `json:"password,omitempty"`
+    DB       int    `json:"db,omitempty"`
+}
+
+type ResourceRequirements struct {
+    Requests map[string]string `json:"requests,omitempty"`
+    Limits   map[string]string `json:"limits,omitempty"`
+}
+
+type AgentConfig struct {
+    Mode                    string                 `json:"mode"`
+    LogLevel                string                 `json:"log_level,omitempty"`
+    LogFormat               string                 `json:"log_format,omitempty"`
+    MetricsPort             int                    `json:"metrics_port,omitempty"`
+    HealthzPort             int                    `json:"healthz_port,omitempty"`
+    EnableWebSocket         bool                   `json:"enable_websocket,omitempty"`
+    EnableCompression       bool                   `json:"enable_compression,omitempty"`
+    EnableResourceProxy     bool                   `json:"enable_resource_proxy,omitempty"`
+    CacheRefreshInterval    string                 `json:"cache_refresh_interval,omitempty"`
+    KeepAliveInterval       string                 `json:"keep_alive_interval,omitempty"`
+    AllowedNamespaces       []string               `json:"allowed_namespaces,omitempty"`
+    AppLabelSelector        string                 `json:"app_label_selector,omitempty"`
+    DestinationBasedMapping bool                   `json:"destination_based_mapping,omitempty"`
+    CreateNamespace         bool                   `json:"create_namespace,omitempty"`
+    IgnoreUnmanagedApps     bool                   `json:"ignore_unmanaged_apps,omitempty"`
+    CustomConfig            map[string]interface{} `json:"custom_config,omitempty"`
+}
+
+type ApplicationSpec struct {
+    Name      string                 `json:"name"`
+    Namespace string                 `json:"namespace"`
+    Source    ApplicationSource      `json:"source"`
+    Destination ApplicationDestination `json:"destination"`
+    Project   string                 `json:"project,omitempty"`
+    SyncPolicy *SyncPolicy           `json:"sync_policy,omitempty"`
+    Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type ApplicationSource struct {
+    RepoURL        string                 `json:"repo_url"`
+    Path           string                 `json:"path,omitempty"`
+    TargetRevision string                 `json:"target_revision,omitempty"`
+    Helm           *HelmSource            `json:"helm,omitempty"`
+    Kustomize      *KustomizeSource       `json:"kustomize,omitempty"`
+    Directory      *DirectorySource       `json:"directory,omitempty"`
+    Plugin         map[string]interface{} `json:"plugin,omitempty"`
+}
+
+type ApplicationDestination struct {
+    Server    string `json:"server,omitempty"`
+    Namespace string `json:"namespace"`
+    Name      string `json:"name,omitempty"`
+}
+
+type HelmSource struct {
+    ValueFiles []string               `json:"value_files,omitempty"`
+    Parameters []HelmParameter        `json:"parameters,omitempty"`
+    Values     string                 `json:"values,omitempty"`
+    FileParameters []HelmFileParameter `json:"file_parameters,omitempty"`
+}
+
+type HelmParameter struct {
+    Name  string `json:"name"`
+    Value string `json:"value"`
+}
+
+type HelmFileParameter struct {
+    Name string `json:"name"`
+    Path string `json:"path"`
+}
+
+type KustomizeSource struct {
+    NamePrefix string                 `json:"name_prefix,omitempty"`
+    NameSuffix string                 `json:"name_suffix,omitempty"`
+    Images     []string               `json:"images,omitempty"`
+    CommonLabels map[string]string    `json:"common_labels,omitempty"`
+    CommonAnnotations map[string]string `json:"common_annotations,omitempty"`
+}
+
+type DirectorySource struct {
+    Recurse bool                   `json:"recurse,omitempty"`
+    Jsonnet *JsonnetSource         `json:"jsonnet,omitempty"`
+    Exclude string                 `json:"exclude,omitempty"`
+    Include string                 `json:"include,omitempty"`
+}
+
+type JsonnetSource struct {
+    ExtVars []JsonnetVar `json:"ext_vars,omitempty"`
+    TlaVars []JsonnetVar `json:"tla_vars,omitempty"`
+    Libs    []string     `json:"libs,omitempty"`
+}
+
+type JsonnetVar struct {
+    Name  string `json:"name"`
+    Value string `json:"value"`
+    Code  bool   `json:"code,omitempty"`
+}
+
+type SyncPolicy struct {
+    Automated   *AutomatedSyncPolicy `json:"automated,omitempty"`
+    SyncOptions []string             `json:"sync_options,omitempty"`
+    Retry       *RetryPolicy         `json:"retry,omitempty"`
+}
+
+type AutomatedSyncPolicy struct {
+    Prune      bool `json:"prune,omitempty"`
+    SelfHeal   bool `json:"self_heal,omitempty"`
+    AllowEmpty bool `json:"allow_empty,omitempty"`
+}
+
+type RetryPolicy struct {
+    Limit   int64        `json:"limit,omitempty"`
+    Backoff *Backoff     `json:"backoff,omitempty"`
+}
+
+type Backoff struct {
+    Duration    string  `json:"duration,omitempty"`
+    Factor      int64   `json:"factor,omitempty"`
+    MaxDuration string  `json:"max_duration,omitempty"`
+}
+
+type ApplicationStatus struct {
+    Name         string                 `json:"name"`
+    Namespace    string                 `json:"namespace"`
+    SyncStatus   string                 `json:"sync_status"`
+    HealthStatus string                 `json:"health_status"`
+    Revision     string                 `json:"revision,omitempty"`
+    LastSyncTime time.Time              `json:"last_sync_time,omitempty"`
+    Conditions   []ApplicationCondition `json:"conditions,omitempty"`
+    Resources    []ResourceStatus       `json:"resources,omitempty"`
+    Metadata     map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type ApplicationCondition struct {
+    Type               string    `json:"type"`
+    Status             string    `json:"status"`
+    LastTransitionTime time.Time `json:"last_transition_time"`
+    Reason             string    `json:"reason,omitempty"`
+    Message            string    `json:"message,omitempty"`
+}
+
+type ResourceStatus struct {
+    Group     string `json:"group,omitempty"`
+    Version   string `json:"version"`
+    Kind      string `json:"kind"`
+    Namespace string `json:"namespace,omitempty"`
+    Name      string `json:"name"`
+    Status    string `json:"status"`
+    Health    string `json:"health,omitempty"`
+    Message   string `json:"message,omitempty"`
+}
+
+type ApplicationInfo struct {
+    Name         string    `json:"name"`
+    Namespace    string    `json:"namespace"`
+    Project      string    `json:"project,omitempty"`
+    SyncStatus   string    `json:"sync_status"`
+    HealthStatus string    `json:"health_status"`
+    CreatedAt    time.Time `json:"created_at"`
+    UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type AgentUpdates struct {
+    Config    *AgentConfig           `json:"config,omitempty"`
+    Resources *ResourceRequirements  `json:"resources,omitempty"`
+    Metadata  *map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type AgentUpdateResult struct {
+    AgentID   string            `json:"agent_id"`
+    Status    string            `json:"status"`
+    UpdatedAt time.Time         `json:"updated_at"`
+    Metadata  map[string]string `json:"metadata"`
+}
+
+type AgentFilters struct {
+    TenantID  string   `json:"tenant_id,omitempty"`
+    Mode      string   `json:"mode,omitempty"`
+    Status    []string `json:"status,omitempty"`
+    Namespace string   `json:"namespace,omitempty"`
+    Limit     int      `json:"limit,omitempty"`
+    Offset    int      `json:"offset,omitempty"`
+}
+
+type ValidationResult struct {
+    Valid    bool     `json:"valid"`
+    Errors   []string `json:"errors,omitempty"`
+    Warnings []string `json:"warnings,omitempty"`
 }
 ```
 
@@ -1714,6 +2648,550 @@ func main() {
 | **Developer Experience** | Manual observability setup | Automatic multi-tenant observability |
 | **Production Readiness** | Basic (requires external stack) | Comprehensive (batteries included) |
 | **Customization** | N/A | Interface-based with pluggable implementations |
+
+## SaaS Application Integration Patterns
+
+### Overview
+
+The open-sbt toolkit provides standardized integration patterns that enable SaaS applications to seamlessly leverage multi-tenant capabilities without complex custom development. These patterns support both new applications built from scratch and existing applications being migrated to multi-tenant architecture.
+
+### Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SaaS Application Layer                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   Frontend   │  │   API Layer  │  │   Business   │          │
+│  │  (React/Vue) │  │   (REST/     │  │    Logic     │          │
+│  │              │  │   GraphQL)   │  │   Services   │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│         │                  │                  │                  │
+│         └──────────────────┴──────────────────┘                  │
+│                            │                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │           open-sbt Integration Layer                     │   │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │   │
+│  │  │Application│ │ Tenant   │ │Resource  │ │ Event    │  │   │
+│  │  │Integration│ │ Context  │ │Provisioning│ │Handling │  │   │
+│  │  │  Manager  │ │ Manager  │ │  Hooks   │ │ Callbacks│  │   │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+        ┌───────────────────────────────────────┐
+        │         open-sbt Core Toolkit         │
+        │  Control Plane + Application Plane    │
+        └───────────────────────────────────────┘
+```
+
+### Core Integration Interfaces
+
+#### IApplicationIntegration Interface
+
+The main interface for SaaS applications to integrate with the open-sbt toolkit.
+
+```go
+// IApplicationIntegration provides SaaS application integration capabilities
+type IApplicationIntegration interface {
+    // Application Registration
+    RegisterApplication(ctx context.Context, app ApplicationDefinition) error
+    GetApplication(ctx context.Context, appID string) (*ApplicationDefinition, error)
+    UpdateApplication(ctx context.Context, appID string, updates ApplicationUpdates) error
+    UnregisterApplication(ctx context.Context, appID string) error
+    
+    // Tenant-Application Binding
+    BindApplicationToTenant(ctx context.Context, appID string, tenantID string, config ApplicationTenantConfig) error
+    UnbindApplicationFromTenant(ctx context.Context, appID string, tenantID string) error
+    GetTenantApplications(ctx context.Context, tenantID string) ([]ApplicationBinding, error)
+    
+    // Application Health and Status
+    ReportApplicationHealth(ctx context.Context, appID string, tenantID string, health ApplicationHealth) error
+    GetApplicationHealth(ctx context.Context, appID string, tenantID string) (*ApplicationHealth, error)
+    
+    // Application Configuration
+    SetApplicationConfig(ctx context.Context, appID string, tenantID string, config map[string]interface{}) error
+    GetApplicationConfig(ctx context.Context, appID string, tenantID string) (map[string]interface{}, error)
+    
+    // Application Events
+    PublishApplicationEvent(ctx context.Context, event ApplicationEvent) error
+    SubscribeToApplicationEvents(ctx context.Context, appID string, handler ApplicationEventHandler) error
+    
+    // Application Scaling
+    RequestApplicationScaling(ctx context.Context, appID string, tenantID string, scaling ScalingRequest) error
+    GetApplicationScaling(ctx context.Context, appID string, tenantID string) (*ScalingStatus, error)
+}
+
+// Application Integration Types
+type ApplicationDefinition struct {
+    ID              string                 `json:"id"`
+    Name            string                 `json:"name"`
+    Version         string                 `json:"version"`
+    Description     string                 `json:"description"`
+    Type            string                 `json:"type"`            // "web", "api", "worker", "microservice"
+    Category        string                 `json:"category"`        // "core", "addon", "integration"
+    SupportedTiers  []string               `json:"supported_tiers"`
+    ResourceTypes   []string               `json:"resource_types"`  // Custom resources this app needs
+    Dependencies    []ApplicationDependency `json:"dependencies"`
+    Endpoints       []ApplicationEndpoint  `json:"endpoints"`
+    HealthChecks    []HealthCheckDefinition `json:"health_checks"`
+    Configuration   ApplicationConfigSchema `json:"configuration"`
+    Scaling         ScalingConfiguration   `json:"scaling"`
+    Metadata        map[string]interface{} `json:"metadata"`
+    CreatedAt       time.Time              `json:"created_at"`
+    UpdatedAt       time.Time              `json:"updated_at"`
+}
+
+type ApplicationDependency struct {
+    Name        string   `json:"name"`
+    Type        string   `json:"type"`        // "service", "database", "cache", "storage"
+    Version     string   `json:"version"`
+    Required    bool     `json:"required"`
+    Tiers       []string `json:"tiers"`       // Which tiers require this dependency
+}
+
+type ApplicationEndpoint struct {
+    Name        string            `json:"name"`
+    Path        string            `json:"path"`
+    Method      string            `json:"method"`
+    Public      bool              `json:"public"`
+    TenantAware bool              `json:"tenant_aware"`
+    RequiredRoles []string        `json:"required_roles"`
+    RateLimit   *RateLimitConfig  `json:"rate_limit,omitempty"`
+}
+
+type RateLimitConfig struct {
+    RequestsPerMinute int               `json:"requests_per_minute"`
+    BurstSize         int               `json:"burst_size"`
+    TierMultipliers   map[string]float64 `json:"tier_multipliers"` // tier -> multiplier
+}
+
+type HealthCheckDefinition struct {
+    Name        string        `json:"name"`
+    Type        string        `json:"type"`        // "http", "tcp", "command"
+    Target      string        `json:"target"`      // URL, port, or command
+    Interval    time.Duration `json:"interval"`
+    Timeout     time.Duration `json:"timeout"`
+    Retries     int           `json:"retries"`
+    TenantAware bool          `json:"tenant_aware"`
+}
+
+type ApplicationConfigSchema struct {
+    Schema      map[string]interface{} `json:"schema"`      // JSON Schema
+    Defaults    map[string]interface{} `json:"defaults"`
+    TierDefaults map[string]map[string]interface{} `json:"tier_defaults"` // tier -> config
+    Required    []string               `json:"required"`
+    Sensitive   []string               `json:"sensitive"`   // Fields that should be encrypted
+}
+
+type ScalingConfiguration struct {
+    Enabled         bool                   `json:"enabled"`
+    MinReplicas     int                    `json:"min_replicas"`
+    MaxReplicas     int                    `json:"max_replicas"`
+    TierReplicas    map[string]int         `json:"tier_replicas"`    // tier -> default replicas
+    Metrics         []ScalingMetric        `json:"metrics"`
+    Behavior        ScalingBehavior        `json:"behavior"`
+}
+
+type ScalingMetric struct {
+    Type            string  `json:"type"`            // "cpu", "memory", "requests", "custom"
+    Target          float64 `json:"target"`
+    AverageValue    string  `json:"average_value,omitempty"`
+    AverageUtilization int  `json:"average_utilization,omitempty"`
+}
+
+type ScalingBehavior struct {
+    ScaleUp   ScalingPolicy `json:"scale_up"`
+    ScaleDown ScalingPolicy `json:"scale_down"`
+}
+
+type ScalingPolicy struct {
+    StabilizationWindow time.Duration `json:"stabilization_window"`
+    Policies            []ScalingPolicyRule `json:"policies"`
+}
+
+type ScalingPolicyRule struct {
+    Type          string        `json:"type"`          // "percent", "pods"
+    Value         int           `json:"value"`
+    PeriodSeconds time.Duration `json:"period_seconds"`
+}
+
+type ApplicationTenantConfig struct {
+    AppID       string                 `json:"app_id"`
+    TenantID    string                 `json:"tenant_id"`
+    Config      map[string]interface{} `json:"config"`
+    Resources   []ResourceSpec         `json:"resources"`
+    Scaling     *ScalingOverride       `json:"scaling,omitempty"`
+    Enabled     bool                   `json:"enabled"`
+    CreatedAt   time.Time              `json:"created_at"`
+    UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+type ScalingOverride struct {
+    MinReplicas *int                `json:"min_replicas,omitempty"`
+    MaxReplicas *int                `json:"max_replicas,omitempty"`
+    Metrics     []ScalingMetric     `json:"metrics,omitempty"`
+}
+
+type ApplicationBinding struct {
+    AppID       string                 `json:"app_id"`
+    TenantID    string                 `json:"tenant_id"`
+    Status      string                 `json:"status"`      // "active", "inactive", "error"
+    Config      map[string]interface{} `json:"config"`
+    Health      *ApplicationHealth     `json:"health,omitempty"`
+    CreatedAt   time.Time              `json:"created_at"`
+    UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+type ApplicationHealth struct {
+    AppID       string                    `json:"app_id"`
+    TenantID    string                    `json:"tenant_id"`
+    Status      string                    `json:"status"`      // "healthy", "degraded", "unhealthy"
+    Checks      map[string]HealthCheckResult `json:"checks"`
+    LastCheck   time.Time                 `json:"last_check"`
+    Message     string                    `json:"message,omitempty"`
+    Metadata    map[string]interface{}    `json:"metadata"`
+}
+
+type HealthCheckResult struct {
+    Status      string        `json:"status"`
+    Message     string        `json:"message,omitempty"`
+    Duration    time.Duration `json:"duration"`
+    CheckedAt   time.Time     `json:"checked_at"`
+    Error       string        `json:"error,omitempty"`
+}
+
+type ApplicationEvent struct {
+    ID          string                 `json:"id"`
+    AppID       string                 `json:"app_id"`
+    TenantID    string                 `json:"tenant_id,omitempty"`
+    Type        string                 `json:"type"`        // "started", "stopped", "scaled", "error", "custom"
+    Severity    string                 `json:"severity"`    // "info", "warning", "error", "critical"
+    Message     string                 `json:"message"`
+    Details     map[string]interface{} `json:"details"`
+    Timestamp   time.Time              `json:"timestamp"`
+    Source      string                 `json:"source"`
+}
+
+type ApplicationEventHandler func(ctx context.Context, event ApplicationEvent) error
+
+type ScalingRequest struct {
+    AppID       string                 `json:"app_id"`
+    TenantID    string                 `json:"tenant_id"`
+    Action      string                 `json:"action"`      // "scale_up", "scale_down", "scale_to"
+    Replicas    *int                   `json:"replicas,omitempty"`
+    Reason      string                 `json:"reason"`
+    Parameters  map[string]interface{} `json:"parameters"`
+    RequestedAt time.Time              `json:"requested_at"`
+}
+
+type ScalingStatus struct {
+    AppID           string    `json:"app_id"`
+    TenantID        string    `json:"tenant_id"`
+    CurrentReplicas int       `json:"current_replicas"`
+    DesiredReplicas int       `json:"desired_replicas"`
+    Status          string    `json:"status"`    // "scaling", "stable", "error"
+    LastScaled      time.Time `json:"last_scaled"`
+    Reason          string    `json:"reason"`
+}
+```
+
+### Integration Patterns
+
+#### Pattern 1: New Application Integration
+
+For new applications built with open-sbt from the ground up:
+
+```go
+// Example: New SaaS application integration
+func main() {
+    // Initialize open-sbt integration
+    integration := opensbt.NewApplicationIntegration(opensbt.IntegrationConfig{
+        AppID:       "my-saas-app",
+        AppName:     "My SaaS Application",
+        Version:     "1.0.0",
+        ControlPlane: controlPlaneClient,
+    })
+    
+    // Register application with open-sbt
+    appDef := ApplicationDefinition{
+        ID:          "my-saas-app",
+        Name:        "My SaaS Application",
+        Version:     "1.0.0",
+        Type:        "web",
+        Category:    "core",
+        SupportedTiers: []string{"basic", "standard", "premium", "enterprise"},
+        ResourceTypes: []string{"database", "cache", "storage"},
+        Dependencies: []ApplicationDependency{
+            {Name: "postgresql", Type: "database", Version: "15", Required: true},
+            {Name: "redis", Type: "cache", Version: "7", Required: false, Tiers: []string{"premium", "enterprise"}},
+        },
+        Endpoints: []ApplicationEndpoint{
+            {Name: "api", Path: "/api/v1", Method: "GET", Public: true, TenantAware: true},
+            {Name: "admin", Path: "/admin", Method: "GET", Public: false, RequiredRoles: []string{"admin"}},
+        },
+        HealthChecks: []HealthCheckDefinition{
+            {Name: "http", Type: "http", Target: "/health", Interval: 30*time.Second, TenantAware: false},
+            {Name: "database", Type: "tcp", Target: "5432", Interval: 60*time.Second, TenantAware: true},
+        },
+        Configuration: ApplicationConfigSchema{
+            Schema: map[string]interface{}{
+                "type": "object",
+                "properties": map[string]interface{}{
+                    "feature_flags": map[string]interface{}{
+                        "type": "object",
+                        "properties": map[string]interface{}{
+                            "advanced_analytics": {"type": "boolean", "default": false},
+                            "custom_branding": {"type": "boolean", "default": false},
+                        },
+                    },
+                },
+            },
+            TierDefaults: map[string]map[string]interface{}{
+                "basic": {
+                    "feature_flags": map[string]interface{}{
+                        "advanced_analytics": false,
+                        "custom_branding": false,
+                    },
+                },
+                "premium": {
+                    "feature_flags": map[string]interface{}{
+                        "advanced_analytics": true,
+                        "custom_branding": true,
+                    },
+                },
+            },
+        },
+        Scaling: ScalingConfiguration{
+            Enabled: true,
+            MinReplicas: 1,
+            MaxReplicas: 10,
+            TierReplicas: map[string]int{
+                "basic": 1,
+                "standard": 2,
+                "premium": 3,
+                "enterprise": 5,
+            },
+            Metrics: []ScalingMetric{
+                {Type: "cpu", Target: 70.0, AverageUtilization: 70},
+                {Type: "requests", Target: 100.0, AverageValue: "100"},
+            },
+        },
+    }
+    
+    err := integration.RegisterApplication(context.Background(), appDef)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Set up tenant provisioning hooks
+    integration.OnTenantProvisioned(func(ctx context.Context, tenantID string, tier string) error {
+        // Custom provisioning logic for this application
+        return setupTenantSpecificResources(ctx, tenantID, tier)
+    })
+    
+    // Set up tenant deprovisioning hooks
+    integration.OnTenantDeprovisioned(func(ctx context.Context, tenantID string) error {
+        // Custom cleanup logic
+        return cleanupTenantSpecificResources(ctx, tenantID)
+    })
+    
+    // Start application with multi-tenant middleware
+    r := gin.Default()
+    
+    // Apply open-sbt middleware
+    r.Use(integration.TenantContextMiddleware())
+    r.Use(integration.HealthCheckMiddleware())
+    r.Use(integration.ScalingMetricsMiddleware())
+    
+    // Define tenant-aware routes
+    r.GET("/api/v1/data", func(c *gin.Context) {
+        tenantID := c.GetString("tenant_id")
+        tier := c.GetString("tenant_tier")
+        
+        // Business logic with automatic tenant context
+        data, err := getDataForTenant(c.Request.Context(), tenantID, tier)
+        if err != nil {
+            c.JSON(500, gin.H{"error": err.Error()})
+            return
+        }
+        
+        c.JSON(200, data)
+    })
+    
+    r.Run(":8080")
+}
+```
+
+#### Pattern 2: Existing Application Migration
+
+For existing applications being migrated to multi-tenant architecture:
+
+```go
+// Example: Migrating existing application to open-sbt
+type ExistingAppMigrator struct {
+    integration IApplicationIntegration
+    legacyDB    *sql.DB
+    newStorage  IStorage
+}
+
+func (m *ExistingAppMigrator) MigrateToMultiTenant() error {
+    ctx := context.Background()
+    
+    // Step 1: Register existing application
+    appDef := ApplicationDefinition{
+        ID:          "legacy-app",
+        Name:        "Legacy Application",
+        Version:     "2.0.0", // Bumped for multi-tenant version
+        Type:        "web",
+        Category:    "core",
+        SupportedTiers: []string{"basic", "standard", "premium"},
+        // ... other configuration
+    }
+    
+    err := m.integration.RegisterApplication(ctx, appDef)
+    if err != nil {
+        return err
+    }
+    
+    // Step 2: Migrate existing data to tenant-scoped structure
+    return m.migrateExistingData(ctx)
+}
+
+func (m *ExistingAppMigrator) migrateExistingData(ctx context.Context) error {
+    // Get all existing customers from legacy database
+    customers, err := m.getLegacyCustomers(ctx)
+    if err != nil {
+        return err
+    }
+    
+    for _, customer := range customers {
+        // Create tenant for each customer
+        tenant, err := m.integration.CreateTenant(ctx, CreateTenantRequest{
+            Name:  customer.CompanyName,
+            Email: customer.AdminEmail,
+            Tier:  m.determineTier(customer), // Business logic to determine tier
+        })
+        if err != nil {
+            return err
+        }
+        
+        // Migrate customer data to tenant-scoped tables
+        err = m.migrateCustomerData(ctx, customer.ID, tenant.ID)
+        if err != nil {
+            return err
+        }
+        
+        // Bind application to tenant
+        err = m.integration.BindApplicationToTenant(ctx, "legacy-app", tenant.ID, ApplicationTenantConfig{
+            Config: map[string]interface{}{
+                "legacy_customer_id": customer.ID, // For reference during migration
+                "migration_date": time.Now(),
+            },
+            Enabled: true,
+        })
+        if err != nil {
+            return err
+        }
+    }
+    
+    return nil
+}
+```
+
+#### Pattern 3: Multi-Region Application Deployment
+
+For applications that need to be deployed across multiple regions:
+
+```go
+// Example: Multi-region application deployment
+type MultiRegionApp struct {
+    integration IApplicationIntegration
+    regions     []RegionConfig
+}
+
+type RegionConfig struct {
+    Name        string
+    Endpoint    string
+    Primary     bool
+    Tiers       []string // Which tiers are supported in this region
+}
+
+func (app *MultiRegionApp) DeployToRegions(ctx context.Context) error {
+    for _, region := range app.regions {
+        // Register application variant for each region
+        appDef := ApplicationDefinition{
+            ID:          fmt.Sprintf("my-app-%s", region.Name),
+            Name:        fmt.Sprintf("My App (%s)", region.Name),
+            Version:     "1.0.0",
+            Type:        "web",
+            Category:    "core",
+            SupportedTiers: region.Tiers,
+            Metadata: map[string]interface{}{
+                "region": region.Name,
+                "primary": region.Primary,
+                "endpoint": region.Endpoint,
+            },
+            // ... other configuration
+        }
+        
+        err := app.integration.RegisterApplication(ctx, appDef)
+        if err != nil {
+            return err
+        }
+        
+        // Set up region-specific provisioning hooks
+        app.integration.OnTenantProvisioned(func(ctx context.Context, tenantID string, tier string) error {
+            return app.provisionTenantInRegion(ctx, tenantID, tier, region)
+        })
+    }
+    
+    return nil
+}
+```
+
+### Application Lifecycle Hooks
+
+The integration layer provides hooks for key tenant lifecycle events:
+
+```go
+// Provisioning hooks
+integration.OnTenantProvisioned(func(ctx context.Context, tenantID string, tier string) error {
+    // Called when a new tenant is provisioned
+    return setupApplicationForTenant(ctx, tenantID, tier)
+})
+
+integration.OnTenantDeprovisioned(func(ctx context.Context, tenantID string) error {
+    // Called when a tenant is being removed
+    return cleanupApplicationForTenant(ctx, tenantID)
+})
+
+integration.OnTenantTierChanged(func(ctx context.Context, tenantID string, oldTier string, newTier string) error {
+    // Called when a tenant's tier is upgraded or downgraded
+    return adjustApplicationForTierChange(ctx, tenantID, oldTier, newTier)
+})
+
+integration.OnTenantSuspended(func(ctx context.Context, tenantID string, reason string) error {
+    // Called when a tenant is suspended
+    return suspendApplicationForTenant(ctx, tenantID, reason)
+})
+
+integration.OnTenantReactivated(func(ctx context.Context, tenantID string) error {
+    // Called when a suspended tenant is reactivated
+    return reactivateApplicationForTenant(ctx, tenantID)
+})
+```
+
+### Benefits of Integration Patterns
+
+1. **Rapid Multi-Tenant Enablement**: Existing applications can be made multi-tenant with minimal code changes
+2. **Standardized Patterns**: Consistent approach across all applications in the platform
+3. **Automatic Scaling**: Built-in scaling based on tenant tier and usage patterns
+4. **Health Monitoring**: Automatic health checks and status reporting
+5. **Event-Driven Architecture**: Applications can react to tenant lifecycle events
+6. **Configuration Management**: Tier-based configuration with tenant-specific overrides
+7. **Resource Optimization**: Automatic resource allocation based on tenant needs
+8. **Multi-Region Support**: Built-in patterns for global application deployment
 
 ## Data Models
 
@@ -2366,10 +3844,222 @@ spec:
 {{- end }}
 ```
 
+**ArgoCD Agent Template:**
+
+```yaml
+# base-charts/tenant-factory/templates/argocd-agent.yaml
+{{- if .Values.argoCDAgent.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+  labels:
+    app.kubernetes.io/name: argocd-agent
+    app.kubernetes.io/instance: tenant-{{ .Values.tenant.id }}
+    tenant-id: {{ .Values.tenant.id }}
+    tenant-tier: {{ .Values.tenant.tier }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-agent
+      app.kubernetes.io/instance: tenant-{{ .Values.tenant.id }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-agent
+        app.kubernetes.io/instance: tenant-{{ .Values.tenant.id }}
+        tenant-id: {{ .Values.tenant.id }}
+    spec:
+      serviceAccountName: argocd-agent
+      containers:
+      - name: argocd-agent
+        image: {{ .Values.argoCDAgent.image.repository }}:{{ .Values.argoCDAgent.image.tag }}
+        imagePullPolicy: {{ .Values.argoCDAgent.image.pullPolicy }}
+        env:
+        - name: ARGOCD_AGENT_MODE
+          value: {{ .Values.argoCDAgent.mode }}
+        - name: ARGOCD_AGENT_SERVER
+          value: {{ .Values.argoCDAgent.principalEndpoint }}
+        - name: ARGOCD_AGENT_SERVER_PORT
+          value: "{{ .Values.argoCDAgent.principalPort }}"
+        - name: ARGOCD_AGENT_AUTH
+          value: {{ .Values.argoCDAgent.auth }}
+        - name: ARGOCD_AGENT_LOG_LEVEL
+          value: {{ .Values.argoCDAgent.logLevel }}
+        - name: ARGOCD_AGENT_LOG_FORMAT
+          value: {{ .Values.argoCDAgent.logFormat }}
+        - name: ARGOCD_AGENT_ALLOWED_NAMESPACES
+          value: "tenant-{{ .Values.tenant.id }}"
+        - name: ARGOCD_AGENT_APP_LABEL_SELECTOR
+          value: "tenant-id={{ .Values.tenant.id }}"
+        {{- if .Values.argoCDAgent.redis.enabled }}
+        - name: ARGOCD_AGENT_REDIS_ADDRESS
+          value: {{ .Values.argoCDAgent.redis.address }}
+        {{- end }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.argoCDAgent.metricsPort }}
+          protocol: TCP
+        - name: healthz
+          containerPort: {{ .Values.argoCDAgent.healthzPort }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.argoCDAgent.resources | nindent 10 }}
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: argocd-agent-tls-{{ .Values.tenant.id }}
+          defaultMode: 0400
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+  labels:
+    tenant-id: {{ .Values.tenant.id }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets", "services", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["argoproj.io"]
+  resources: ["applications", "appprojects"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+subjects:
+- kind: ServiceAccount
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+roleRef:
+  kind: Role
+  name: argocd-agent
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-agent-metrics
+  namespace: tenant-{{ .Values.tenant.id }}
+  labels:
+    app.kubernetes.io/name: argocd-agent
+    app.kubernetes.io/instance: tenant-{{ .Values.tenant.id }}
+spec:
+  ports:
+  - name: metrics
+    port: {{ .Values.argoCDAgent.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: argocd-agent
+    app.kubernetes.io/instance: tenant-{{ .Values.tenant.id }}
+{{- end }}
+```
+
+**Updated values.yaml with ArgoCD Agent Configuration:**
+
+```yaml
+# base-charts/tenant-factory/values.yaml
+tenant:
+  id: ""
+  name: ""
+  tier: "basic"
+
+resources:
+  cpu: "1"
+  memory: "2Gi"
+  storage: "10Gi"
+
+replicas: 1
+dedicated: false
+
+database:
+  enabled: true
+  instances: 1
+  storage: "10Gi"
+
+monitoring:
+  enabled: true
+  
+networking:
+  enabled: true
+  ingress: true
+
+# ArgoCD Agent Configuration
+argoCDAgent:
+  enabled: true
+  mode: "managed"  # "managed" for basic/standard, "autonomous" for premium/enterprise
+  image:
+    repository: "ghcr.io/argoproj-labs/argocd-agent/argocd-agent"
+    tag: "latest"
+    pullPolicy: "Always"
+  principalEndpoint: "argocd-agent-principal.open-sbt-system.svc.cluster.local"
+  principalPort: 8443
+  auth: "mtls:any"
+  logLevel: "info"
+  logFormat: "json"
+  metricsPort: 8181
+  healthzPort: 8002
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  redis:
+    enabled: false
+    address: ""
+
+custom: {}
+```
+
 This approach provides:
 - **Pure GitOps**: All changes tracked in Git with full audit trail
 - **No Custom Operators**: Uses standard Helm + ArgoCD without custom controllers
 - **Tier Flexibility**: Single chart supports all tenant tiers through values
+- **Distributed GitOps**: Automatic argocd-agent deployment for multi-cluster management
+- **Tenant Isolation**: Agent scoped to tenant namespace with proper RBAC
+- **Secure Communication**: mTLS authentication between agent and principal
+- **Tier-Based Modes**: Managed mode for basic/standard, autonomous for premium/enterprise
 - **Rollback Capability**: Git-based rollback with automatic ArgoCD sync
 - **Audit Trail**: Every change is a Git commit with author and timestamp
 - **Warm Pool Optimization**: Sub-second onboarding for basic/standard tiers
@@ -2919,6 +4609,234 @@ func isDuplicateKeyError(err error) bool {
 }
 ```
 
+## ArgoCD Agent Integration Architecture
+
+### Overview
+
+The open-sbt toolkit integrates argocd-agent as a standard component for distributed GitOps management across multi-cluster and edge deployments. The integration follows a hub-and-spoke architecture where the Application Plane embeds a principal component that coordinates with distributed agents deployed to tenant infrastructure.
+
+### Architecture Components
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Control Plane Cluster                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              Application Plane                               ││
+│  │  ┌─────────────────┐  ┌─────────────────┐                  ││
+│  │  │   Provisioner   │  │ ArgoCD Agent    │                  ││
+│  │  │   (GitOps)      │  │   Principal     │                  ││
+│  │  └─────────────────┘  └─────────────────┘                  ││
+│  │           │                     │                           ││
+│  │           │ Git Commits         │ mTLS Connections          ││
+│  │           ▼                     ▼                           ││
+│  │  ┌─────────────────┐  ┌─────────────────┐                  ││
+│  │  │   Git Repo      │  │   Agent Status  │                  ││
+│  │  │  (Tenant Configs)│  │   Dashboard     │                  ││
+│  │  └─────────────────┘  └─────────────────┘                  ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Secure mTLS
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Tenant Infrastructure                         │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │              Tenant Namespace                                ││
+│  │  ┌─────────────────┐  ┌─────────────────┐                  ││
+│  │  │ ArgoCD Agent    │  │   Tenant Apps   │                  ││
+│  │  │  (Managed/      │  │                 │                  ││
+│  │  │  Autonomous)    │  │                 │                  ││
+│  │  └─────────────────┘  └─────────────────┘                  ││
+│  │           │                     ▲                           ││
+│  │           │ Application Sync    │                           ││
+│  │           ▼                     │                           ││
+│  │  ┌─────────────────┐  ┌─────────────────┐                  ││
+│  │  │   ArgoCD        │  │   Kubernetes    │                  ││
+│  │  │ Applications    │  │   Resources     │                  ││
+│  │  └─────────────────┘  └─────────────────┘                  ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Integration Flow
+
+#### 1. Agent Deployment During Tenant Provisioning
+
+```go
+// Automatic agent deployment in Universal Tenant Helm Chart
+func (p *GitOpsHelmProvisioner) ProvisionTenant(ctx context.Context, req ProvisionRequest) (*ProvisionResult, error) {
+    // 1. Generate tenant configuration with argocd-agent
+    tenantConfig := p.generateTenantConfig(req)
+    
+    // 2. Configure agent based on tier
+    agentConfig := p.configureAgentForTier(req.Tier)
+    tenantConfig.ArgoCDAgent = agentConfig
+    
+    // 3. Generate agent credentials
+    credentials, err := p.argoCDAgent.RegisterAgent(ctx, AgentRegistration{
+        AgentID:  fmt.Sprintf("tenant-%s-agent", req.TenantID),
+        TenantID: req.TenantID,
+        Mode:     agentConfig.Mode,
+        Namespace: fmt.Sprintf("tenant-%s", req.TenantID),
+    })
+    if err != nil {
+        return nil, err
+    }
+    
+    // 4. Store credentials as Kubernetes secrets
+    err = p.createAgentSecrets(ctx, req.TenantID, credentials)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 5. Commit tenant configuration to Git
+    err = p.CommitTenantConfig(ctx, req.TenantID, tenantConfig)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 6. Trigger ArgoCD sync
+    return p.TriggerSync(ctx, req.TenantID)
+}
+
+func (p *GitOpsHelmProvisioner) configureAgentForTier(tier string) AgentConfig {
+    switch tier {
+    case "basic", "standard":
+        return AgentConfig{
+            Mode:                    "managed",
+            LogLevel:                "info",
+            EnableResourceProxy:     true,
+            DestinationBasedMapping: false,
+            Resources: &ResourceRequirements{
+                Requests: map[string]string{"cpu": "100m", "memory": "128Mi"},
+                Limits:   map[string]string{"cpu": "300m", "memory": "256Mi"},
+            },
+        }
+    case "premium", "enterprise":
+        return AgentConfig{
+            Mode:                    "autonomous",
+            LogLevel:                "info",
+            EnableResourceProxy:     true,
+            DestinationBasedMapping: true,
+            CreateNamespace:         true,
+            Resources: &ResourceRequirements{
+                Requests: map[string]string{"cpu": "200m", "memory": "256Mi"},
+                Limits:   map[string]string{"cpu": "500m", "memory": "512Mi"},
+            },
+        }
+    default:
+        return AgentConfig{Mode: "managed"}
+    }
+}
+```
+
+#### 2. Principal Component in Application Plane
+
+```go
+// Application Plane embeds ArgoCD Agent Principal
+type ApplicationPlane struct {
+    provisioner     IProvisioner
+    eventBus        IEventBus
+    argoCDAgent     IArgoCDAgent
+    principalServer *PrincipalServer
+}
+
+func (ap *ApplicationPlane) Start(ctx context.Context) error {
+    // Start embedded principal for agent coordination
+    principalConfig := PrincipalConfig{
+        Port:              8443,
+        TLSConfig:         ap.getTLSConfig(),
+        MetricsPort:       8181,
+        LogLevel:          "info",
+        EnableCompression: true,
+    }
+    
+    err := ap.argoCDAgent.StartPrincipal(ctx, principalConfig)
+    if err != nil {
+        return fmt.Errorf("failed to start ArgoCD agent principal: %w", err)
+    }
+    
+    // Subscribe to agent events
+    ap.subscribeToAgentEvents(ctx)
+    
+    return nil
+}
+
+func (ap *ApplicationPlane) subscribeToAgentEvents(ctx context.Context) {
+    // Agent connection events
+    ap.eventBus.Subscribe(ctx, "opensbt_agentConnected", ap.handleAgentConnected)
+    ap.eventBus.Subscribe(ctx, "opensbt_agentDisconnected", ap.handleAgentDisconnected)
+    ap.eventBus.Subscribe(ctx, "opensbt_agentHealthChanged", ap.handleAgentHealthChanged)
+    
+    // Application sync events
+    ap.eventBus.Subscribe(ctx, "opensbt_agentAppSynced", ap.handleAgentAppSynced)
+    ap.eventBus.Subscribe(ctx, "opensbt_agentAppHealthChanged", ap.handleAgentAppHealthChanged)
+}
+```
+
+### Security and Isolation
+
+#### 1. Tenant-Scoped Agent Credentials
+
+Each tenant's argocd-agent receives unique mTLS certificates and credentials:
+
+```go
+// Generate tenant-specific agent credentials
+func (ap *ApplicationPlane) generateAgentCredentials(ctx context.Context, tenantID string) (*AgentCredentials, error) {
+    // Generate unique client certificate for tenant
+    clientCert, clientKey, err := ap.generateClientCertificate(tenantID)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Get CA certificate
+    caCert, err := ap.getCACertificate()
+    if err != nil {
+        return nil, err
+    }
+    
+    return &AgentCredentials{
+        AgentID:    fmt.Sprintf("tenant-%s-agent", tenantID),
+        ClientCert: clientCert,
+        ClientKey:  clientKey,
+        CACert:     caCert,
+        ExpiresAt:  time.Now().Add(365 * 24 * time.Hour), // 1 year
+    }, nil
+}
+```
+
+#### 2. Namespace-Scoped RBAC
+
+Each agent is restricted to its tenant's namespace:
+
+```yaml
+# Tenant-scoped RBAC for argocd-agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-agent
+  namespace: tenant-{{ .Values.tenant.id }}
+rules:
+- apiGroups: ["argoproj.io"]
+  resources: ["applications", "appprojects"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  resourceNames: [] # Restricted to tenant namespace only
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["argocd-*"] # Only ArgoCD-related resources
+```
+
+### Operational Benefits
+
+1. **Single Pane of Glass**: Central dashboard shows all tenant applications across distributed infrastructure
+2. **Edge Deployment Support**: Agents work in air-gapped and edge environments
+3. **BYOC Compatibility**: Tenants can deploy agents in their own cloud accounts
+4. **Network Resilience**: Agents automatically reconnect and handle network partitions
+5. **Tenant Isolation**: Each agent is scoped to its tenant's resources only
+6. **Scalable Architecture**: Principal can handle hundreds of distributed agents
+7. **Real-time Status**: Immediate visibility into application health across all locations
+
 ## Testing Strategy
 
 ### Testing Architecture
@@ -3200,6 +5118,9 @@ open-sbt/
 │   │   ├── metering.go         # IMetering interface
 │   │   ├── tiermanager.go      # ITierManager interface (Gap 12 Fix)
 │   │   ├── secretmanager.go    # ISecretManager interface (Gap 8 Fix)
+│   │   ├── systemadmin.go      # ISystemAdmin interface
+│   │   ├── applicationplaneutils.go # IApplicationPlaneUtils interface
+│   │   ├── argoCDagent.go      # IArgoCDAgent interface
 │   │   └── common.go           # Common types and constants
 │   │
 │   ├── providers/              # Default provider implementations
@@ -3225,9 +5146,18 @@ open-sbt/
 │   │   ├── tiermanager/
 │   │   │   ├── mock/           # Mock tier manager for testing
 │   │   │   └── database/       # Database-based implementation
-│   │   └── secretmanager/
-│   │       ├── mock/           # Mock secret manager for testing
-│   │       └── vault/          # HashiCorp Vault implementation
+│   │   ├── secretmanager/
+│   │   │   ├── mock/           # Mock secret manager for testing
+│   │   │   └── vault/          # HashiCorp Vault implementation
+│   │   ├── systemadmin/
+│   │   │   ├── mock/           # Mock system admin for testing
+│   │   │   └── database/       # Database-based implementation
+│   │   ├── applicationplaneutils/
+│   │   │   ├── mock/           # Mock utils for testing
+│   │   │   └── kubernetes/     # Kubernetes-based implementation
+│   │   └── argoCDagent/
+│   │       ├── mock/           # Mock ArgoCD agent for testing
+│   │       └── helm/           # Helm-based agent deployment
 │   │
 │   ├── controlplane/           # Control Plane implementation
 │   │   ├── controlplane.go     # Main Control Plane struct

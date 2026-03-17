@@ -23,13 +23,16 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 
 #### Acceptance Criteria
 
-1. THE Toolkit SHALL provide eight core interfaces: IAuth, IEventBus, IProvisioner, IStorage, IBilling, IMetering, ITierManager, and ISecretManager
+1. THE Toolkit SHALL provide eleven core interfaces: IAuth, IEventBus, IProvisioner, IStorage, IBilling, IMetering, ITierManager, ISecretManager, ISystemAdmin, IApplicationPlaneUtils, and IArgoCDAgent
 2. WHEN a provider implementation is swapped, THE Toolkit SHALL continue to function without code changes in user applications
 3. THE Interface_Definitions SHALL be technology-agnostic and not prescribe specific implementations
 4. WHEN multiple providers implement the same interface, THE Toolkit SHALL allow runtime selection of providers
 5. THE Interfaces SHALL include comprehensive method signatures for all core SaaS operations
-6. THE ISecretManager interface SHALL provide secure secret management capabilities for GitOps workflows
-7. THE ITierManager interface SHALL provide tier configuration and quota management capabilities
+7. THE ISecretManager interface SHALL provide secure secret management capabilities for GitOps workflows
+8. THE ITierManager interface SHALL provide tier configuration and quota management capabilities
+9. THE ISystemAdmin interface SHALL provide platform-level administration capabilities separate from tenant user management
+10. THE IApplicationPlaneUtils interface SHALL provide utility functions for Application Plane resource management and validation
+11. THE IArgoCDAgent interface SHALL provide distributed GitOps agent management capabilities for multi-cluster and edge deployments
 
 ### Requirement 2: Control Plane and Application Plane Separation
 
@@ -60,6 +63,11 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 9. THE Storage_Interface SHALL provide RecordProcessedEvent and IsEventProcessed methods for implementing the Inbox Pattern
 10. WHEN duplicate events are received, THE Application_Plane SHALL detect them using the processed_events table and skip processing
 11. THE Event_Bus SHALL support Event-Driven State Machine events including GitCommitted, ArgoSyncStarted, ArgoSyncCompleted, and ArgoHealthChanged
+12. THE Event_Bus SHALL support ArgoCD agent-specific events including opensbt_agentDeployed, opensbt_agentConnected, opensbt_agentDisconnected, and opensbt_agentHealthChanged
+13. THE Event_Bus SHALL support agent application management events including opensbt_agentAppSynced, opensbt_agentAppHealthChanged, and opensbt_agentAppStatusChanged
+14. WHEN argocd-agents are deployed, THE Application_Plane SHALL publish opensbt_agentDeployed events with agent configuration and credentials
+15. WHEN argocd-agents connect to the principal, THE Application_Plane SHALL publish opensbt_agentConnected events for monitoring and observability
+16. THE Event_Bus SHALL support agent lifecycle events for monitoring distributed GitOps operations across edge locations and BYOC deployments
 
 ### Requirement 4: Tenant Lifecycle Management
 
@@ -111,6 +119,14 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 6. THE Provisioner SHALL support webhook-triggered synchronization to eliminate polling delays
 7. WHEN Git commits are made, THE Provisioner SHALL trigger immediate ArgoCD sync via webhooks
 8. THE Provisioner SHALL provide sync trigger mechanisms for manual and automated reconciliation
+9. THE Application Plane SHALL embed an argocd-agent principal component for centralized GitOps coordination
+10. THE Universal Tenant Helm Chart SHALL include argocd-agent deployment as a standard component
+11. WHEN tenants are provisioned, THE argocd-agent SHALL be automatically deployed and configured to connect to the central principal
+12. THE argocd-agent deployment SHALL use tenant-scoped credentials and mTLS authentication for secure communication
+13. THE argocd-agent SHALL support both managed mode and autonomous mode based on tenant tier configuration
+14. THE GitOps workflow SHALL support distributed agent management across edge locations and BYOC deployments
+15. THE argocd-agent SHALL provide real-time application status and health information back to the central dashboard
+16. THE argocd-agent configuration SHALL be managed through the same GitOps workflow as other tenant resources
 
 ### Requirement 7: Tier-Based Resource Management
 
@@ -119,12 +135,12 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 #### Acceptance Criteria
 
 1. THE Provisioner SHALL allocate resources based on tenant tier configuration
-2. WHEN a basic tier tenant is created, THE Provisioner SHALL apply basic resource limits (1 CPU, 2Gi memory, shared database)
-3. WHEN a standard tier tenant is created, THE Provisioner SHALL apply standard resource limits (2 CPU, 4Gi memory, shared database)
-4. WHEN a premium tier tenant is created, THE Provisioner SHALL apply premium resource limits (4 CPU, 8Gi memory, dedicated database, S3 bucket)
-5. WHEN an enterprise tier tenant is created, THE Provisioner SHALL apply enterprise resource allocations (8 CPU, 16Gi memory, dedicated database with replicas, S3 bucket, Redis cache)
+2. WHEN a basic tier tenant is created, THE Provisioner SHALL apply basic resource limits (1 CPU, 2Gi memory, shared database) and deploy argocd-agent in managed mode
+3. WHEN a standard tier tenant is created, THE Provisioner SHALL apply standard resource limits (2 CPU, 4Gi memory, shared database) and deploy argocd-agent in managed mode
+4. WHEN a premium tier tenant is created, THE Provisioner SHALL apply premium resource limits (4 CPU, 8Gi memory, dedicated database, S3 bucket) and deploy argocd-agent in autonomous mode
+5. WHEN an enterprise tier tenant is created, THE Provisioner SHALL apply enterprise resource allocations (8 CPU, 16Gi memory, dedicated database with replicas, S3 bucket, Redis cache) and deploy argocd-agent in autonomous mode
 6. THE Tier_Configuration SHALL be customizable through provider implementations
-7. WHEN tier upgrades occur, THE Provisioner SHALL adjust resources without downtime
+7. WHEN tier upgrades occur, THE Provisioner SHALL adjust resources without downtime and reconfigure argocd-agent mode if necessary
 8. THE ITierManager SHALL provide formal tier definitions with quotas, features, and pricing configuration
 9. THE ITierManager SHALL validate tenant resource usage against tier quotas before provisioning
 10. THE ITierManager SHALL support tier feature management and quota enforcement
@@ -146,6 +162,7 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 26. THE ITierManager SHALL provide methods for CRUD operations on tier configurations (CreateTier, GetTier, UpdateTier, DeleteTier, ListTiers)
 27. THE Tier validation SHALL prevent tier changes that would violate current resource usage constraints
 28. THE Tier management SHALL support rollback of tier changes if resource adjustment fails
+29. THE Tier configuration SHALL determine argocd-agent operation mode (managed for basic/standard, autonomous for premium/enterprise)
 
 ### Requirement 8: Comprehensive Testing Framework
 
@@ -289,4 +306,107 @@ open-sbt is a Go-based SaaS builder toolkit that provides reusable abstractions 
 25. THE Libraries SHALL follow an interface-based abstraction pattern allowing custom implementations
 26. THE Libraries SHALL provide both default implementations (batteries included) and support for custom observability stacks
 27. THE Libraries SHALL allow mixing default and custom implementations (e.g., default logging with custom metrics)
-28. WHEN developers use these libraries, THEN multi-tenancy concerns SHALL be handled automatically without manual code
+### Requirement 17: System Administration and Platform Management
+
+**User Story:** As a platform administrator, I want dedicated system-level administration capabilities separate from tenant user management, so that I can manage the platform infrastructure and monitor system-wide health.
+
+#### Acceptance Criteria
+
+1. THE ISystemAdmin interface SHALL provide platform administrator management separate from tenant users
+2. THE ISystemAdmin interface SHALL support creating, updating, and listing platform administrators
+3. THE ISystemAdmin interface SHALL provide system-wide metrics and health monitoring capabilities
+4. THE ISystemAdmin interface SHALL support platform configuration management
+5. THE ISystemAdmin interface SHALL provide audit logging for all platform-level operations
+6. THE ISystemAdmin interface SHALL support emergency operations and system maintenance modes
+7. THE Platform administrators SHALL have elevated privileges for cross-tenant operations when necessary
+8. THE System administration SHALL maintain clear separation from tenant-specific user management
+9. THE ISystemAdmin interface SHALL provide platform resource utilization and capacity planning metrics
+10. THE ISystemAdmin interface SHALL support system backup and disaster recovery operations
+
+### Requirement 18: Application Plane Utility Functions
+
+**User Story:** As an Application Plane developer, I want standardized utility functions for resource management and validation, so that I can build consistent provisioning logic across different providers.
+
+#### Acceptance Criteria
+
+1. THE IApplicationPlaneUtils interface SHALL provide resource configuration validation methods
+2. THE IApplicationPlaneUtils interface SHALL generate consistent resource naming patterns for tenants
+3. THE IApplicationPlaneUtils interface SHALL calculate resource requirements based on tenant tiers
+4. THE IApplicationPlaneUtils interface SHALL provide template generation for common resource types
+5. THE IApplicationPlaneUtils interface SHALL validate resource dependencies and constraints
+6. THE IApplicationPlaneUtils interface SHALL support custom resource type registration and validation
+7. THE IApplicationPlaneUtils interface SHALL provide resource cost estimation capabilities
+8. THE IApplicationPlaneUtils interface SHALL support resource migration and upgrade utilities
+9. THE IApplicationPlaneUtils interface SHALL provide health check utilities for provisioned resources
+10. THE IApplicationPlaneUtils interface SHALL support batch operations for multiple tenant resources
+
+### Requirement 19: SaaS Application Integration Patterns
+
+**User Story:** As a SaaS application developer, I want clear integration patterns and guidelines for connecting my application with the open-sbt toolkit, so that I can leverage multi-tenant capabilities without complex custom development.
+
+#### Acceptance Criteria
+
+1. THE Toolkit SHALL provide standardized integration patterns for SaaS applications
+2. THE Integration patterns SHALL support both new applications and existing application migration
+3. THE Toolkit SHALL provide application-specific provisioning hooks and callbacks
+4. THE Integration patterns SHALL support custom resource types and provisioning logic
+5. THE Toolkit SHALL provide application health monitoring and status reporting interfaces
+6. THE Integration patterns SHALL support application-specific configuration management
+7. THE Toolkit SHALL provide tenant-aware application deployment patterns
+8. THE Integration patterns SHALL support application scaling based on tenant tier and usage
+9. THE Toolkit SHALL provide application-specific event handling and workflow integration
+10. THE Integration patterns SHALL support multi-region and multi-cloud application deployments
+
+### Requirement 20: Distributed GitOps Agent Integration
+
+**User Story:** As a platform operator, I want distributed GitOps agents automatically deployed to tenant infrastructure, so that I can manage tenant applications across edge locations, air-gapped environments, and BYOC deployments with a single pane of glass.
+
+#### Acceptance Criteria
+
+1. THE Toolkit SHALL integrate argocd-agent as a standard component in the Universal Tenant Helm Chart
+2. WHEN a tenant is provisioned, THE Provisioner SHALL automatically deploy an argocd-agent to establish the agent-principal connection
+3. THE Application Plane SHALL embed an argocd-agent principal component for centralized GitOps coordination
+4. THE Agent deployment SHALL be configured with tenant-scoped credentials and mTLS authentication
+5. THE Agent SHALL connect back to the central Application Plane's embedded principal using secure mTLS connections
+6. THE Toolkit SHALL support both managed mode (central control) and autonomous mode (local control with central observability) based on tenant tier
+7. WHEN basic/standard tier tenants are provisioned, THE Agent SHALL operate in managed mode for centralized application management
+8. WHEN premium/enterprise tier tenants are provisioned, THE Agent SHALL support autonomous mode for independent application management with central observability
+9. THE Agent integration SHALL work across edge locations, air-gapped environments, and BYOC deployments
+10. THE Agent SHALL provide real-time application status and health information back to the central dashboard
+11. THE Agent deployment SHALL include proper RBAC configuration scoped to the tenant's namespace and resources
+12. THE Agent SHALL support tenant-specific application filtering using Kubernetes label selectors
+13. THE Principal component SHALL provide a unified view of all tenant applications across distributed agents
+14. THE Agent integration SHALL support network-resilient connections with automatic reconnection capabilities
+15. THE Agent configuration SHALL be managed through the same GitOps workflow as other tenant resources
+16. THE Agent SHALL support tenant-specific resource quotas and constraints enforcement
+17. THE Agent deployment SHALL include monitoring and observability integration with the central platform
+18. THE Agent SHALL provide secure log streaming and terminal access capabilities for tenant applications
+19. THE Agent integration SHALL support tenant isolation with separate TLS certificates and authentication credentials per tenant
+20. THE Toolkit SHALL provide agent lifecycle management including updates, scaling, and decommissioning through GitOps workflows
+
+### Requirement 21: IArgoCDAgent Interface Specification
+
+**User Story:** As a platform developer, I want a standardized interface for ArgoCD agent management, so that I can implement different agent providers while maintaining consistent functionality across multi-cluster and edge deployments.
+
+#### Acceptance Criteria
+
+1. THE IArgoCDAgent interface SHALL provide agent lifecycle management methods (DeployAgent, UpdateAgent, RemoveAgent)
+2. THE IArgoCDAgent interface SHALL support both managed mode (central control) and autonomous mode (local control with observability)
+3. THE IArgoCDAgent interface SHALL provide agent status monitoring and health checking capabilities
+4. THE IArgoCDAgent interface SHALL support principal management for centralized GitOps coordination
+5. THE IArgoCDAgent interface SHALL provide secure agent-principal communication with mTLS authentication
+6. THE IArgoCDAgent interface SHALL support application management across distributed agents
+7. THE IArgoCDAgent interface SHALL provide configuration management for agent-specific settings
+8. THE IArgoCDAgent interface SHALL support tenant-scoped agent isolation and access controls
+9. THE IArgoCDAgent interface SHALL provide validation methods for agent configurations
+10. THE IArgoCDAgent interface SHALL support credential management and rotation for agent authentication
+11. THE IArgoCDAgent interface SHALL provide application synchronization capabilities across agents
+12. THE IArgoCDAgent interface SHALL support namespace-based application filtering and management
+13. THE IArgoCDAgent interface SHALL provide real-time status updates and heartbeat monitoring
+14. THE IArgoCDAgent interface SHALL support resource requirements specification for agent deployments
+15. THE IArgoCDAgent interface SHALL provide comprehensive error handling and status reporting
+16. THE IArgoCDAgent interface SHALL support agent registration and deregistration workflows
+17. THE IArgoCDAgent interface SHALL provide application status aggregation across multiple agents
+18. THE IArgoCDAgent interface SHALL support custom configuration parameters for different deployment scenarios
+19. THE IArgoCDAgent interface SHALL provide agent filtering and querying capabilities
+20. THE IArgoCDAgent interface SHALL support webhook-based status updates and event notifications
