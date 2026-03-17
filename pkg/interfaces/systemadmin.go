@@ -35,4 +35,8 @@ type ISystemAdmin interface {
 	EnableMaintenanceMode(ctx context.Context, reason string) error
 	DisableMaintenanceMode(ctx context.Context) error
 	IsMaintenanceMode(ctx context.Context) (bool, error)
+
+	// Backup and Disaster Recovery (30.13)
+	BackupConfig(ctx context.Context) (map[string]interface{}, error)
+	RestoreConfig(ctx context.Context, snapshot map[string]interface{}) error
 }

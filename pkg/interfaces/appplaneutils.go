@@ -6,6 +6,14 @@ import (
 	"github.com/soloz-io/open-sbt/pkg/models"
 )
 
+// MigrationStep describes a single step in a tier migration plan (31.8).
+type MigrationStep struct {
+	Order        int    `json:"order"`
+	Action       string `json:"action"` // "add" | "remove"
+	ResourceType string `json:"resource_type"`
+	Description  string `json:"description"`
+}
+
 // IApplicationPlaneUtils provides utility functions for Application Plane operations
 type IApplicationPlaneUtils interface {
 	// Resource Validation
@@ -29,4 +37,10 @@ type IApplicationPlaneUtils interface {
 
 	// Batch Operations
 	BatchProvisionResources(ctx context.Context, requests []models.ProvisionRequest) ([]models.ProvisionResult, error)
+
+	// Custom Resource Types (31.6)
+	RegisterCustomResourceType(name string, requiredKeys []string, costPerHour float64)
+
+	// Migration Utilities (31.8)
+	PlanTierMigration(fromTier, toTier string) ([]MigrationStep, error)
 }

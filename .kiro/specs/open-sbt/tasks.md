@@ -377,36 +377,36 @@
 - [x] 30.13 Implement backup and disaster recovery operations
 
 ### 31. Application Plane Utilities
-- [ ] 31.1 Implement resource configuration validation
-- [ ] 31.2 Add consistent resource naming pattern generation
-- [ ] 31.3 Implement resource requirement calculation based on tiers
-- [ ] 31.4 Add template generation for common resource types
-- [ ] 31.5 Implement resource dependency validation
-- [ ] 31.6 Add custom resource type registration
-- [ ] 31.7 Implement resource cost estimation
-- [ ] 31.8 Add resource migration utilities
-- [ ] 31.9 Implement health check utilities
-- [ ] 31.10 Add batch operation support
+- [x] 31.1 Implement resource configuration validation
+- [x] 31.2 Add consistent resource naming pattern generation
+- [x] 31.3 Implement resource requirement calculation based on tiers
+- [x] 31.4 Add template generation for common resource types
+- [x] 31.5 Implement resource dependency validation
+- [x] 31.6 Add custom resource type registration
+- [x] 31.7 Implement resource cost estimation
+- [x] 31.8 Add resource migration utilities
+- [x] 31.9 Implement health check utilities
+- [x] 31.10 Add batch operation support
 
 ## Phase 12: MCP Integration (Weeks 26-27)
 
 ### 32. MCP Server Implementation
-- [ ] 32.1 Create ControlPlaneMCPServer struct
-- [ ] 32.2 Implement GetTools method with tool definitions
-- [ ] 32.3 Add create_tenant MCP tool
-- [ ] 32.4 Add get_tenant MCP tool
-- [ ] 32.5 Add update_tenant MCP tool
-- [ ] 32.6 Add delete_tenant MCP tool
-- [ ] 32.7 Add list_tenants MCP tool
-- [ ] 32.8 Add create_user MCP tool
-- [ ] 32.9 Add list_users MCP tool
-- [ ] 32.10 Add get_tenant_config MCP tool
-- [ ] 32.11 Add update_tenant_config MCP tool
-- [ ] 32.12 Add get_tenant_usage MCP tool
-- [ ] 32.13 Implement tool input schema validation
-- [ ] 32.14 Add tool error handling and responses
-- [ ] 32.15 Implement MCP server HTTP endpoints
-- [ ] 32.16 Add MCP tool documentation
+- [~] 32.1 Create ControlPlaneMCPServer struct
+- [~] 32.2 Implement GetTools method with tool definitions
+- [~] 32.3 Add create_tenant MCP tool
+- [~] 32.4 Add get_tenant MCP tool
+- [~] 32.5 Add update_tenant MCP tool
+- [~] 32.6 Add delete_tenant MCP tool
+- [~] 32.7 Add list_tenants MCP tool
+- [~] 32.8 Add create_user MCP tool
+- [~] 32.9 Add list_users MCP tool
+- [~] 32.10 Add get_tenant_config MCP tool
+- [~] 32.11 Add update_tenant_config MCP tool
+- [~] 32.12 Add get_tenant_usage MCP tool
+- [~] 32.13 Implement tool input schema validation
+- [~] 32.14 Add tool error handling and responses
+- [~] 32.15 Implement MCP server HTTP endpoints
+- [~] 32.16 Add MCP tool documentation
 
 ## Phase 13: Testing Framework (Weeks 28-30)
 
