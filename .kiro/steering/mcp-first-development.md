@@ -163,7 +163,7 @@ func CreateTenant(ctx context.Context, name string) error {
 - Agent lifecycle management
 - Agent execution and monitoring
 - Agent configuration
-- Kagent workflow operations
+- Kagents workflow operations
 
 **Before Writing Code:**
 ```go
@@ -524,7 +524,7 @@ if err != nil || !allowed {
 
 ### 3. Use Type-Safe Database Queries
 ```go
-// Use sqlc generated queries (not raw SQL)
+// Use sqlc generated queries (not raw SQL) for Go APIs
 // File: queries.sql
 -- name: GetAgentByTenant :one
 SELECT * FROM agents 
@@ -535,6 +535,10 @@ agent, err := queries.GetAgentByTenant(ctx, GetAgentByTenantParams{
     TenantID: tenantID,
     AgentID:  agentID,
 })
+
+// Note: PostgREST is used separately for dashboard APIs
+// GET /agents?tenant_id=eq.123&agent_id=eq.456
+// PostgREST automatically respects RLS policies
 ```
 
 
@@ -548,9 +552,9 @@ event := TenantCreatedEvent{
     Timestamp: time.Now(),
 }
 
-err = natsClient.Publish("tenant.created", event)
+err = natsClient.Publish("opensbt_tenantCreated", event)
 if err != nil {
-    log.WithError(err).Error("Failed to publish tenant.created event")
+    log.WithError(err).Error("Failed to publish opensbt_tenantCreated event")
 }
 ```
 
@@ -711,7 +715,7 @@ Before writing code for any component:
 2. Check for `execute_agent` tool
 3. Review tool capabilities (sync vs async, parameters, etc.)
 4. Use tool instead of implementing execution logic
-5. Tool handles: gVisor sandboxing, NATS queuing, Kagent workflows
+5. Tool handles: AgentSandbox sandboxing, NATS queuing, Kagents workflows
 
 ### Scenario 3: Cluster Provisioning
 **Task**: Add cluster creation endpoint

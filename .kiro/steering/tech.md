@@ -51,7 +51,7 @@ inclusion: always
 - **K8sGPT**: AI-powered cluster diagnostics
 
 ## Development Tools
-- **sqlc**: Type-safe SQL code generation
+- **sqlc**: Type-safe SQL code generation for Go APIs
 - **Testcontainers-Go**: Integration testing with real databases
 - **Gin**: HTTP web framework for Go APIs
 - **Helm**: Kubernetes package management
@@ -61,7 +61,7 @@ inclusion: always
 - **LiteLLM**: AI model gateway and routing
 - **AgentSandbox (runsc)**: Sandboxed agent execution environment
 - **MCP (Model Context Protocol)**: Agent-to-platform communication
-- **PostgREST**: Auto-generated REST APIs from PostgreSQL schema
+- **PostgREST**: Auto-generated REST APIs for dashboards and reporting
 
 ## Git & CI/CD
 - **GitHub**: Source code and GitOps repositories

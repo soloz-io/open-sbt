@@ -54,7 +54,7 @@ controlPlane.CreateTenant(ctx, zerosbt.CreateTenantRequest{
     Tier:  "premium", 
     Email: "admin@acme.com",
 })
-// → Publishes zerosbt_onboardingRequest to NATS
+// → Publishes opensbt_onboardingRequest to NATS
 
 // Application Plane subscribes and provisions
 appPlane.OnOnboardingRequest(func(ctx context.Context, event zerosbt.OnboardingRequestEvent) error {
@@ -237,13 +237,13 @@ tools := []mcp.Tool{
 
 **User Need:** "I want to run tenant code safely without compromising the platform or other tenants"
 
-**open-sbt Pattern:** Use **gVisor Sandboxing** with **Agent Execution**
+**open-sbt Pattern:** Use **AgentSandbox Sandboxing** with **Agent Execution**
 
 **Implementation Approach:**
 ```go
-// open-sbt's agent execution with gVisor
+// open-sbt's agent execution with AgentSandbox
 executor := agent.NewAgentExecutor(agent.Config{
-    Runtime: "gvisor",  // Sandboxed execution
+    Runtime: "agentsandbox",  // Sandboxed execution
 })
 
 // Execute tenant agent safely
@@ -255,7 +255,7 @@ result, err := executor.ExecuteAgent(ctx, agent.ExecutionRequest{
 ```
 
 **Kubernetes Security Patterns:**
-- **gVisor Runtime**: Kernel-level isolation for tenant workloads
+- **AgentSandbox Runtime**: Kernel-level isolation for tenant workloads
 - **Pod Security Standards**: Enforce security policies per namespace
 - **Network Policies**: Micro-segmentation between tenant services
 - **Service Mesh**: mTLS and fine-grained access control
@@ -294,7 +294,7 @@ metering.IngestUsageEvent(ctx, metering.UsageEvent{
 | User Need | Isolation Level | open-sbt Pattern | K8s Pattern | Complexity |
 |-----------|----------------|------------------|-------------|------------|
 | **Basic Multi-Tenancy** | Namespace | IProvisioner | Namespace-per-tenant | Low |
-| **High Security** | Pod-level | gVisor + IProvisioner | RuntimeClass + NetworkPolicy | High |
+| **High Security** | Pod-level | AgentSandbox + IProvisioner | RuntimeClass + NetworkPolicy | High |
 | **Cost Optimization** | Resource-based | IMetering + Quotas | ResourceQuota + Monitoring | Medium |
 | **Self-Service** | RBAC-based | MCP Tools + IAuth | Custom RBAC + CRDs | Medium |
 | **Enterprise Scale** | Full Isolation | All Patterns | Multi-cluster + GitOps | High |
@@ -314,7 +314,7 @@ metering.IngestUsageEvent(ctx, metering.UsageEvent{
 4. Gradually adopt **open-sbt provisioning patterns**
 
 ### For High-Security Requirements:
-1. Use **gVisor runtime** for workload isolation
+1. Use **AgentSandbox runtime** for workload isolation
 2. Implement **Network Policies** for network segmentation
 3. Add **Pod Security Standards** enforcement
 4. Consider **separate clusters** for sensitive tenants

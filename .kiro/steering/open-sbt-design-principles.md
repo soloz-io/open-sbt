@@ -22,7 +22,7 @@ open-sbt is a Go-based SaaS builder toolkit for the zero-ops platform, inspired 
 - Event Bus: NATS (not AWS EventBridge)
 - Auth: Ory Stack (not AWS Cognito)
 - Provisioning: Crossplane + ArgoCD + Argo Workflows (not CloudFormation + CodeBuild)
-- Database: PostgreSQL with sqlc (not DynamoDB)
+- Database: PostgreSQL with sqlc for Go APIs and PostgREST for dashboards (not DynamoDB)
 - API: Gin framework (not API Gateway + Lambda)
 
 ## Core Architecture Principles
@@ -219,29 +219,29 @@ controlPlane := zerosbt.NewControlPlane(zerosbt.ControlPlaneConfig{
 **Standard Events:**
 
 **Control Plane Events** (source: `zerosbt.control.plane`):
-- `zerosbt_onboardingRequest` - Tenant onboarding initiated
-- `zerosbt_offboardingRequest` - Tenant offboarding initiated
-- `zerosbt_activateRequest` - Tenant activation requested
-- `zerosbt_deactivateRequest` - Tenant deactivation requested
-- `zerosbt_tenantUserCreated` - User created in tenant
-- `zerosbt_tenantUserDeleted` - User deleted from tenant
-- `zerosbt_billingSuccess` - Billing operation succeeded
-- `zerosbt_billingFailure` - Billing operation failed
+- `opensbt_onboardingRequest` - Tenant onboarding initiated
+- `opensbt_offboardingRequest` - Tenant offboarding initiated
+- `opensbt_activateRequest` - Tenant activation requested
+- `opensbt_deactivateRequest` - Tenant deactivation requested
+- `opensbt_tenantUserCreated` - User created in tenant
+- `opensbt_tenantUserDeleted` - User deleted from tenant
+- `opensbt_billingSuccess` - Billing operation succeeded
+- `opensbt_billingFailure` - Billing operation failed
 
 **Application Plane Events** (source: `zerosbt.application.plane`):
-- `zerosbt_onboardingSuccess` - Tenant onboarded successfully
-- `zerosbt_onboardingFailure` - Tenant onboarding failed
-- `zerosbt_offboardingSuccess` - Tenant offboarded successfully
-- `zerosbt_offboardingFailure` - Tenant offboarding failed
-- `zerosbt_provisionSuccess` - Resources provisioned successfully
-- `zerosbt_provisionFailure` - Resource provisioning failed
-- `zerosbt_deprovisionSuccess` - Resources deprovisioned successfully
-- `zerosbt_deprovisionFailure` - Resource deprovisioning failed
-- `zerosbt_activateSuccess` - Tenant activated successfully
-- `zerosbt_activateFailure` - Tenant activation failed
-- `zerosbt_deactivateSuccess` - Tenant deactivated successfully
-- `zerosbt_deactivateFailure` - Tenant deactivation failed
-- `zerosbt_ingestUsage` - Usage data ingested
+- `opensbt_onboardingSuccess` - Tenant onboarded successfully
+- `opensbt_onboardingFailure` - Tenant onboarding failed
+- `opensbt_offboardingSuccess` - Tenant offboarded successfully
+- `opensbt_offboardingFailure` - Tenant offboarding failed
+- `opensbt_provisionSuccess` - Resources provisioned successfully
+- `opensbt_provisionFailure` - Resource provisioning failed
+- `opensbt_deprovisionSuccess` - Resources deprovisioned successfully
+- `opensbt_deprovisionFailure` - Resource deprovisioning failed
+- `opensbt_activateSuccess` - Tenant activated successfully
+- `opensbt_activateFailure` - Tenant activation failed
+- `opensbt_deactivateSuccess` - Tenant deactivated successfully
+- `opensbt_deactivateFailure` - Tenant deactivation failed
+- `opensbt_ingestUsage` - Usage data ingested
 
 
 **Event Structure:**
@@ -261,7 +261,7 @@ type Event struct {
 {
     "id": "6a7e8feb-b491-4cf7-a9f1-bf3703467718",
     "version": "1.0",
-    "detailType": "zerosbt_onboardingRequest",
+    "detailType": "opensbt_onboardingRequest",
     "source": "zerosbt.control.plane",
     "time": "2026-03-16T18:43:48Z",
     "detail": {
@@ -276,10 +276,10 @@ type Event struct {
 **Event Flow Example:**
 ```
 1. Control Plane: Tenant registration API called
-2. Control Plane: Publishes zerosbt_onboardingRequest to NATS
+2. Control Plane: Publishes opensbt_onboardingRequest to NATS
 3. Application Plane: Receives event, starts provisioning
 4. Application Plane: Provisions resources (Crossplane + ArgoCD)
-5. Application Plane: Publishes zerosbt_provisionSuccess to NATS
+5. Application Plane: Publishes opensbt_provisionSuccess to NATS
 6. Control Plane: Receives event, updates tenant status
 7. Control Plane: Returns success to API caller
 ```
@@ -287,7 +287,7 @@ type Event struct {
 
 ### 4. Tenant Lifecycle Management
 
-**Principle:** Provide standardized workflows for tenant onboarding, management, and offboarding.
+**Principle:** Provide standardized workflows for tenant onboarding, management, and offboarding with optimized latency paths.
 
 **Tenant States:**
 - `pending` - Registration created, awaiting provisioning
@@ -297,15 +297,31 @@ type Event struct {
 - `deprovisioning` - Resources being removed
 - `deleted` - Tenant removed
 
-**Tenant Registration Workflow:**
+**Warm Pool Pattern for Low-Latency Onboarding:**
+The zero-ops platform implements a dual-path onboarding strategy to optimize for different tenant tiers:
+
+**Path A: Shared Pool Tiers (Basic/Standard) - Latency < 2 Seconds**
+1. Application Plane maintains pre-provisioned "warm" tenant slots (warm-pool-01, warm-pool-02, etc.)
+2. Control Plane instantly claims an available warm slot for new tenant
+3. Ory Keto creates tenant authorization relationships immediately
+4. API returns success in < 2 seconds
+5. Async refill: Application Plane updates claimed slot's Git configuration and provisions new warm slot
+
+**Path B: Dedicated Tiers (Premium/Enterprise) - Latency 2-5 Minutes**
+1. API returns 202 Accepted immediately
+2. Application Plane commits new tenant folder to Git with dedicated tier configuration
+3. ArgoCD syncs Helm chart with Crossplane XRs for dedicated resources
+4. Progress streamed via NATS events until provisioning complete
+
+**Standard Tenant Registration Workflow:**
 ```
 1. POST /tenant-registrations
    → Creates registration record (status: pending)
-   → Publishes zerosbt_onboardingRequest event
+   → Publishes opensbt_onboardingRequest event
    
 2. Application Plane receives event
-   → Provisions resources (Crossplane + Argo Workflows)
-   → Publishes zerosbt_provisionSuccess event
+   → Provisions resources (Warm Pool claim OR Crossplane + Argo Workflows)
+   → Publishes opensbt_provisionSuccess event
    
 3. Control Plane receives success event
    → Updates registration (status: active)
@@ -317,11 +333,11 @@ type Event struct {
 ```
 1. DELETE /tenants/{tenantId}
    → Updates tenant (status: deprovisioning)
-   → Publishes zerosbt_offboardingRequest event
+   → Publishes opensbt_offboardingRequest event
    
 2. Application Plane receives event
-   → Deprovisions resources
-   → Publishes zerosbt_deprovisionSuccess event
+   → Deprovisions resources (returns to warm pool OR destroys dedicated resources)
+   → Publishes opensbt_deprovisionSuccess event
    
 3. Control Plane receives success event
    → Deletes tenant record
@@ -444,62 +460,86 @@ type ResourceSpec struct {
 
 ### 6. GitOps-First Approach
 
-**Principle:** All infrastructure changes must go through Git, leveraging ArgoCD for continuous deployment.
+**Principle:** All infrastructure changes must go through Git, leveraging ArgoCD for continuous deployment. The zero-ops platform explicitly rejects custom Kubernetes operators for tenant resource generation to reduce operational complexity.
 
 **GitOps Workflow:**
 ```
 1. Control Plane receives tenant creation request
 2. Control Plane commits tenant configuration to Git repository
-3. ArgoCD detects Git change
-4. ArgoCD applies Crossplane Composition
-5. Crossplane provisions infrastructure
-6. ArgoCD reports sync status
-7. Application Plane publishes success event
-8. Control Plane updates tenant status
+3. ArgoCD ApplicationSet detects Git change via Directory Generator
+4. ArgoCD applies Universal Tenant Helm Chart
+5. Helm chart generates Kubernetes resources and Crossplane XRs
+6. Crossplane provisions infrastructure based on XRs
+7. ArgoCD reports sync status
+8. Application Plane publishes success event
+9. Control Plane updates tenant status
 ```
+
+**Key Architectural Decision:**
+Instead of using Red Hat COP operators (namespace-configuration-operator, gitops-generator), the zero-ops platform uses a simplified approach:
+- **Helm templating** for resource generation
+- **Crossplane compositions** for infrastructure provisioning  
+- **ArgoCD ApplicationSets** for deployment orchestration
+
+This approach reduces operational complexity while maintaining the same functionality.
 
 **Repository Structure:**
 ```
 gitops-repo/
+├── base-charts/
+│   └── tenant-factory/         # Universal Helm chart for all tenants
+│       ├── Chart.yaml
+│       ├── values.yaml         # Default values
+│       └── templates/
+│           ├── namespace.yaml
+│           ├── resourcequota.yaml
+│           ├── networkpolicy.yaml
+│           ├── rolebinding.yaml
+│           └── crossplane-xr.yaml  # Crossplane CompositeResources
 ├── tenants/
-│   ├── tenant-123/
-│   │   ├── composition.yaml      # Crossplane Composition
-│   │   ├── application.yaml      # ArgoCD Application
-│   │   └── config.yaml           # Tenant configuration
-│   └── tenant-456/
-│       ├── composition.yaml
-│       ├── application.yaml
-│       └── config.yaml
-├── platform/
-│   ├── control-plane/
-│   │   └── deployment.yaml
-│   └── application-plane/
-│       └── deployment.yaml
-└── shared/
-    ├── namespaces.yaml
-    └── rbac.yaml
+│   ├── warm-pool-01/           # Pre-provisioned unassigned tenant
+│   │   └── values.yaml         # Helm values: tier=basic, assigned=false
+│   ├── warm-pool-02/           # Pre-provisioned unassigned tenant
+│   │   └── values.yaml
+│   ├── acme-corp-123/          # Active assigned tenant
+│   │   └── values.yaml         # Helm values: tier=premium, assigned=true
+│   └── stark-ind-456/          # Enterprise BYOC tenant
+│       └── values.yaml         # Helm values: tier=enterprise, byoc=true
+└── applicationset.yaml         # ArgoCD ApplicationSet with Git Directory Generator
 ```
 
-**ArgoCD Application Template:**
+**ArgoCD ApplicationSet Template:**
 ```yaml
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
-  name: tenant-{{.TenantID}}
-  namespace: argocd
+  name: zero-ops-tenant-factory
 spec:
-  project: tenants
-  source:
-    repoURL: https://github.com/org/gitops-repo
-    targetRevision: main
-    path: tenants/tenant-{{.TenantID}}
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: tenant-{{.TenantID}}
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+  generators:
+  - git:
+      repoURL: https://github.com/zero-ops/gitops-repo
+      revision: HEAD
+      directories:
+      - path: tenants/*
+  template:
+    metadata:
+      name: 'tenant-{{path.basename}}'
+    spec:
+      project: tenants
+      source:
+        repoURL: https://github.com/zero-ops/gitops-repo
+        targetRevision: HEAD
+        path: base-charts/tenant-factory
+        helm:
+          valueFiles:
+          - ../../tenants/{{path.basename}}/values.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'tenant-{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
 ```
 
 
@@ -681,15 +721,15 @@ spec:
           tenant-id: {{.TenantID}}
 ```
 
-**5. Agent Execution Layer (gVisor)**
+**5. Agent Execution Layer (AgentSandbox)**
 ```go
-// Agent execution with gVisor sandboxing
+// Agent execution with AgentSandbox sandboxing
 type AgentExecutor struct {
-    runtime string // "runsc" for gVisor
+    runtime string // "runsc" for AgentSandbox
 }
 
 func (e *AgentExecutor) ExecuteAgent(ctx context.Context, req AgentExecutionRequest) error {
-    // Create pod with gVisor runtime
+    // Create pod with AgentSandbox runtime
     pod := &corev1.Pod{
         ObjectMeta: metav1.ObjectMeta{
             Name:      fmt.Sprintf("agent-%s", req.AgentID),
@@ -699,7 +739,7 @@ func (e *AgentExecutor) ExecuteAgent(ctx context.Context, req AgentExecutionRequ
             },
         },
         Spec: corev1.PodSpec{
-            RuntimeClassName: &e.runtime, // "gvisor"
+            RuntimeClassName: &e.runtime, // "agentsandbox"
             Containers: []corev1.Container{
                 {
                     Name:  "agent",
@@ -725,7 +765,7 @@ func (e *AgentExecutor) ExecuteAgent(ctx context.Context, req AgentExecutionRequ
 var (
     tenantRequestDuration = prometheus.NewHistogramVec(
         prometheus.HistogramOpts{
-            Name: "zerosbt_tenant_request_duration_seconds",
+            Name: "opensbt_tenant_request_duration_seconds",
             Help: "Duration of tenant requests",
         },
         []string{"tenant_id", "tier", "method", "path", "status"},
@@ -733,7 +773,7 @@ var (
     
     tenantResourceUsage = prometheus.NewGaugeVec(
         prometheus.GaugeOpts{
-            Name: "zerosbt_tenant_resource_usage",
+            Name: "opensbt_tenant_resource_usage",
             Help: "Tenant resource usage",
         },
         []string{"tenant_id", "tier", "resource_type"},
@@ -771,7 +811,73 @@ log.WithFields(log.Fields{
 - Cost dashboard: Per-tenant cost attribution
 
 
-### 10. Testing Strategy
+### 10. Database Architecture Pattern
+
+**Principle:** Use a layered database access pattern with sqlc for Go APIs and PostgREST for dashboards and reporting.
+
+**Architecture Overview:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Go Applications                           │
+│  (Control Plane, Application Plane, MCP Servers)            │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ Control Plane│  │   App Plane  │  │ MCP Servers  │     │
+│  │   (sqlc)     │  │   (sqlc)     │  │   (sqlc)     │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ Type-safe SQL queries
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL Database                       │
+│  - Row-Level Security (RLS) for tenant isolation            │
+│  - CNPG operator for high availability                      │
+│  - pgvector for AI similarity search                        │
+│  - Composite indexes on (tenant_id, ...)                   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ Auto-generated REST API
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      PostgREST                              │
+│  - Auto-generated REST endpoints                            │
+│  - Used for dashboards and reporting                        │
+│  - Respects PostgreSQL RLS policies                         │
+│  - Read-only access for most use cases                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**sqlc Usage (Primary Go APIs):**
+- **Purpose**: Type-safe database access for all Go applications
+- **Benefits**: Compile-time SQL validation, type safety, performance
+- **Use Cases**: Control Plane APIs, Application Plane logic, MCP tools
+- **Pattern**: Write SQL queries, generate Go code, use in applications
+
+**PostgREST Usage (Dashboards & Reporting):**
+- **Purpose**: Auto-generated REST API for frontend applications
+- **Benefits**: No backend code needed, automatic API generation, RLS support
+- **Use Cases**: Admin dashboards, tenant portals, reporting interfaces
+- **Pattern**: Define database schema, PostgREST exposes REST endpoints
+
+**Example Implementation:**
+```go
+// sqlc usage in Go applications
+func (s *TenantService) GetTenant(ctx context.Context, tenantID uuid.UUID) (*Tenant, error) {
+    // Type-safe query generated by sqlc
+    return s.queries.GetTenantByID(ctx, tenantID)
+}
+
+// PostgREST usage in frontend applications
+// GET /tenants?tenant_id=eq.123&select=name,tier,created_at
+// Automatically respects RLS policies
+```
+
+**Security Considerations:**
+- Both sqlc and PostgREST respect PostgreSQL RLS policies
+- PostgREST should be configured with read-only access for most endpoints
+- Use JWT authentication for PostgREST endpoints
+- Apply rate limiting to PostgREST endpoints via AgentGateway
+
+### 11. Testing Strategy
 
 **Principle:** Use E2E tests with Testcontainers-Go to validate multi-tenant scenarios.
 
@@ -843,7 +949,8 @@ open-sbt/
 │   │   ├── nats/            # NATS event bus implementation
 │   │   ├── crossplane/      # Crossplane provisioner
 │   │   ├── argoworkflows/   # Argo Workflows provisioner
-│   │   └── postgres/        # PostgreSQL storage implementation
+│   │   ├── postgres/        # PostgreSQL storage implementation (sqlc)
+│   │   └── postgrest/       # PostgREST dashboard API implementation
 │   │
 │   ├── controlplane/         # Control Plane components
 │   │   ├── controlplane.go  # Main Control Plane struct
@@ -1076,6 +1183,7 @@ func main() {
 - [ ] Implement Ory Stack auth provider
 - [ ] Implement NATS event bus provider
 - [ ] Implement PostgreSQL storage provider (with sqlc)
+- [ ] Implement PostgREST dashboard provider
 - [ ] Implement Crossplane provisioner
 - [ ] Implement Argo Workflows provisioner
 
@@ -1162,7 +1270,7 @@ func main() {
 | **Event Bus** | AWS EventBridge | NATS |
 | **Authentication** | AWS Cognito | Ory Stack (Kratos/Hydra/Keto) |
 | **Provisioning** | CloudFormation + CodeBuild | Crossplane + Argo Workflows |
-| **Database** | DynamoDB | PostgreSQL + sqlc |
+| **Database** | DynamoDB | PostgreSQL + sqlc + PostgREST |
 | **API** | API Gateway + Lambda | Gin (Go HTTP framework) |
 | **Deployment** | CloudFormation | GitOps (ArgoCD) |
 | **Isolation** | IAM + VPC | RLS + Ory Keto + K8s Namespaces |

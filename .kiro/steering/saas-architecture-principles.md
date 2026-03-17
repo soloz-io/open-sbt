@@ -204,7 +204,7 @@ Service boundaries should consider tenant load, isolation requirements, and tier
 
 **Implementation Guidelines:**
 - Separate services with different isolation needs (e.g., agent execution vs. API)
-- Use gVisor for tenant agent execution (strong isolation)
+- Use AgentSandbox for tenant agent execution (strong isolation)
 - Pool shared services (authentication, billing, monitoring)
 - Silo high-security services for premium tiers
 - Consider noisy neighbor impact when designing service boundaries
@@ -265,7 +265,7 @@ SET app.tenant_id = 'tenant-uuid-here';
 - Apply NetworkPolicies to restrict cross-tenant communication
 - Use PodSecurityPolicies/PodSecurityStandards
 - Implement ResourceQuotas per tenant namespace
-- Use gVisor (runsc) for agent execution sandboxing
+- Use AgentSandbox (runsc) for agent execution sandboxing
 - Apply RBAC to prevent cross-tenant access
 
 **Authorization (Ory Keto):**
@@ -346,6 +346,12 @@ Prevent one tenant's failures from impacting others.
 - Implement query timeouts per tenant tier
 - Use materialized views for tenant analytics
 
+**Database Access Patterns:**
+- **sqlc for Go APIs**: Type-safe queries for Control Plane, Application Plane, MCP servers
+- **PostgREST for Dashboards**: Auto-generated REST API for admin interfaces and reporting
+- **Consistent RLS**: Both sqlc and PostgREST respect PostgreSQL Row-Level Security policies
+- **Performance**: sqlc generates optimized queries, PostgREST provides efficient REST endpoints
+
 **Caching Strategy:**
 - Cache tenant configuration in memory (reduce database load)
 - Use Redis for tenant session data (if needed)
@@ -365,7 +371,7 @@ Prevent one tenant's failures from impacting others.
 **Agent Execution Performance:**
 - Use LiteLLM for model routing and caching
 - Implement agent result caching (avoid redundant executions)
-- Use gVisor with optimized runtime configuration
+- Use AgentSandbox with optimized runtime configuration
 - Pre-warm agent execution environments
 - Use KEDA to scale agent workers based on queue depth
 
@@ -457,7 +463,7 @@ Tenant Cost =
 5. ArgoCD deploys tenant resources
 6. Initialize tenant database schema (sqlc migrations)
 7. Create tenant identity (Ory Kratos/Keto)
-8. Emit tenant.created event to NATS
+8. Emit opensbt_tenantCreated event to NATS
 9. Return tenant credentials and endpoints
 
 
@@ -466,7 +472,7 @@ Tenant Cost =
 2. Validate request (authentication, authorization)
 3. Mark tenant as deleted (soft delete)
 4. Backup tenant data to S3
-5. Emit tenant.deleted event to NATS
+5. Emit opensbt_tenantDeleted event to NATS
 6. Deactivate tenant identity (Ory Kratos/Keto)
 7. Schedule resource cleanup (grace period)
 8. Delete tenant resources via GitOps
@@ -478,7 +484,7 @@ Tenant Cost =
 3. Update tenant configuration in Git
 4. ArgoCD applies new resource quotas
 5. Update tenant JWT claims (new tier)
-6. Emit tenant.tier_changed event to NATS
+6. Emit opensbt_tenantTierChanged event to NATS
 7. Apply new rate limits and feature flags
 
 ### Monitoring and Alerting
@@ -671,7 +677,8 @@ Agent → MCP Client → MCP Server → Platform API → PostgreSQL
 **Implementation:**
 - MCP servers written in Go
 - Use Gin for HTTP endpoints
-- Use sqlc for database queries
+- Use sqlc for database queries (Go APIs)
+- Use PostgREST for dashboard APIs
 - Include tenant context in all operations
 - Expose via AgentGateway with rate limiting
 
@@ -700,25 +707,25 @@ Agent → MCP Client → MCP Server → Platform API → PostgreSQL
 
 ### Agent Execution Isolation
 
-**gVisor Sandboxing:**
-- Each agent execution runs in gVisor sandbox
+**AgentSandbox Sandboxing:**
+- Each agent execution runs in AgentSandbox sandbox
 - Prevents agent code from accessing host system
 - Limits syscalls and resource access
 - Provides strong isolation between tenant agents
 
 **Pattern:**
 ```
-Tenant Request → NATS Queue → Kagent Worker → gVisor → Agent Code
+Tenant Request → NATS Queue → Kagents Worker → AgentSandbox → Agent Code
 ```
 
 **Security Benefits:**
 - Tenant agents cannot escape sandbox
 - Malicious code contained
-- Resource limits enforced by gVisor
+- Resource limits enforced by AgentSandbox
 - Audit trail of agent operations
 
 **Performance Considerations:**
-- gVisor adds ~10-20% overhead
+- AgentSandbox adds ~10-20% overhead
 - Pre-warm sandboxes for faster startup
 - Use KEDA to scale workers based on queue depth
 - Monitor sandbox resource usage per tenant
